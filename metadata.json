@@ -1,0 +1,6 @@
+{
+  "name": "GBackgroundAI — Beast v13",
+  "description": "Autonomous multi-model AI assistant with Agent Mode, Python runtime, live charts, live code preview sandbox, and Samsung One UI mobile optimization.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

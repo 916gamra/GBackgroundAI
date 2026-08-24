@@ -1,0 +1,13 @@
+{
+  "appId": "com.gbackgroundai.app",
+  "appName": "GBackgroundAI",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#050505"
+  },
+  "server": {
+    "cleartext": true
+  }
+}
