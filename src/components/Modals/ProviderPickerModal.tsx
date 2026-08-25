@@ -52,10 +52,16 @@ export const ProviderPickerModal: React.FC<ProviderPickerModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full max-w-lg bg-[#121215] border-t sm:border border-[#27272a] rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl flex flex-col max-h-[88dvh] sm:max-h-[85vh] animate-slideUp sm:animate-fadeIn">
-        {/* Mobile handle */}
-        <div className="w-12 h-1 rounded-full bg-[#3f3f46] mx-auto mb-3 sm:hidden" />
+    <div
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-0"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl bg-[#121215] border-t border-[#27272a] rounded-t-[28px] p-4 sm:p-5 shadow-2xl flex flex-col max-h-[85dvh] animate-slideUp"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Bottom sheet drag handle */}
+        <div className="w-12 h-1.5 rounded-full bg-[#3f3f46] mx-auto mb-3 shrink-0 cursor-grab" />
 
         {/* Header */}
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#27272a]">
@@ -124,7 +130,15 @@ export const ProviderPickerModal: React.FC<ProviderPickerModalProps> = ({
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-xs text-white">{prov.name}</span>
+                          {(() => {
+                            const isProviderWorking = prov.status !== 'error';
+                            return (
+                              <span className="font-bold text-xs text-white flex items-center gap-1.5">
+                                <span className={`w-2 h-2 rounded-full ${isProviderWorking ? 'bg-emerald-500 shadow-[0_0_4px_#10b981]' : 'bg-rose-500 shadow-[0_0_4px_#f43f5e]'}`} title={isProviderWorking ? 'Provider online & working' : 'Provider connection error'} />
+                                {prov.name}
+                              </span>
+                            );
+                          })()}
                           <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${badge.color}`}>
                             {badge.label}
                           </span>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, X, Trash2, RotateCcw, MessageSquare, Home } from 'lucide-react';
 import { Session } from '../../types';
+import { PremiumAvatar } from '../PremiumAvatar';
 
 interface SessionsModalProps {
   isOpen: boolean;
@@ -42,9 +43,7 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
         {/* Samsung Style Sheet Header */}
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#27272a]">
           <div className="flex items-center gap-2.5 font-extrabold text-base text-white tracking-wide">
-            <div className="p-2 rounded-2xl bg-[var(--accent-light)] text-[var(--accent)]">
-              <MessageSquare size={18} />
-            </div>
+            <PremiumAvatar status="idle" className="w-9 h-9 !rounded-2xl shrink-0" />
             <div>
               <div className="text-sm font-bold text-white">المحادثات والجلسات</div>
               <div className="text-[10px] text-[#a1a1aa] font-sans font-normal">سجل المحادثات المخزنة</div>

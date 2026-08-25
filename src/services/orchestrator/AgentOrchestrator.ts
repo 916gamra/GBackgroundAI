@@ -14,6 +14,7 @@ export interface AgentContext {
   executeTool: (toolCall: any) => Promise<string>;
   adapter: AIProviderAdapter;
   requestTemplate: ChatRequestPayload;
+  buildMessages?: (history: any[]) => any[];
   maxIterations?: number;
 }
 
@@ -50,8 +51,14 @@ export class AgentOrchestrator {
     while (iteration < MAX_ITERS) {
       iteration++;
       
-      // Update payload history
-      requestPayload.messages = currentHistory;
+      // Update payload history with system prompt & project context preserved
+      if (ctx.buildMessages) {
+        requestPayload.messages = ctx.buildMessages(currentHistory);
+      } else {
+        const sysMsgs = (ctx.requestTemplate.messages || []).filter((m: any) => m.role === 'system');
+        requestPayload.messages = [...sysMsgs, ...currentHistory];
+      }
+      
       // In Agent loop, we generally need the model to NOT stream its tool calls for stability,
       // but since we want to unify, we will listen to events.
       

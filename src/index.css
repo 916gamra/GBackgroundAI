@@ -194,3 +194,56 @@ button:active:not(:disabled) {
 .animate-slideRight {
   animation: slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ══════════════════════════════════════════════════════════════ */
+/* SAMSUNG ONE UI 6 & MATERIAL DESIGN 3 OPTIMIZATION SHEET       */
+/* ══════════════════════════════════════════════════════════════ */
+
+.oneui-container {
+  border-radius: 24px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oneui-card {
+  border-radius: 18px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 1rem 1.25rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oneui-card:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-secondary);
+}
+
+.oneui-btn {
+  border-radius: 24px; /* Warm tablet-style rounded pills */
+  padding: 0.6rem 1.2rem;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oneui-input {
+  border-radius: 14px;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  padding: 0.65rem 1rem;
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.oneui-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+  outline: none;
+}
+
+/* Claude AI / One UI Fluid Transitions */
+.fluid-transition {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+

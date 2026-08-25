@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { ExternalLink, RotateCcw, X, Download, Code2 } from 'lucide-react';
+import { ExternalLink, RotateCcw, X, Download, Code2, Sparkles } from 'lucide-react';
 
 interface LivePreviewProps {
   htmlCode: string;
@@ -25,6 +25,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
           <!DOCTYPE html>
           <html>
             <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
               <style>
                 body {
                   margin: 0;
@@ -40,7 +41,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
                   padding: 20px;
                   box-sizing: border-box;
                 }
-                .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+                .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; color: #38bdf8; }
                 h3 { color: #d4d4d8; margin: 0 0 6px 0; font-size: 15px; }
                 p { font-size: 13px; max-width: 320px; line-height: 1.5; margin: 0; }
               </style>
@@ -77,59 +78,74 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
   if (!isOpen) return null;
 
   return (
-    <aside className="w-full lg:w-[48%] xl:w-[50%] h-[calc(100dvh-54px-114px)] fixed top-[54px] right-0 bottom-[114px] z-30 bg-[#0c0c0e] border-l border-[#27272a] flex flex-col shadow-2xl transition-all duration-300">
-      {/* Header bar */}
-      <div className="h-10 bg-[#121215] border-b border-[#27272a] px-3.5 flex items-center justify-between select-none">
-        <div className="flex items-center gap-2 text-sky-400 font-mono text-xs font-semibold">
-          <Code2 size={15} />
-          <span>Live App Sandbox</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-1" />
+    <div
+      className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 sm:p-4 animate-fadeIn"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-[#121215] border border-[#27272a] rounded-[24px] shadow-2xl flex flex-col max-h-[92dvh] h-[85dvh] overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header bar */}
+        <div className="h-14 bg-[#18181c] border-b border-[#27272a] px-3.5 flex items-center justify-between gap-2 shrink-0 select-none">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/30">
+              <Code2 size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-xs text-white">Live App Sandbox</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              </div>
+              <span className="text-[10px] text-[#71717a] font-mono">Interactive Web Runtime</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleDownload}
+              disabled={!htmlCode}
+              className="p-2 rounded-xl bg-[#202026] hover:bg-[#282830] text-[#d4d4d8] hover:text-white border border-[#2e2e38] disabled:opacity-30 transition-colors"
+              title="Download HTML"
+            >
+              <Download size={14} />
+            </button>
+            <button
+              onClick={handleOpenNewTab}
+              disabled={!htmlCode}
+              className="p-2 rounded-xl bg-[#202026] hover:bg-[#282830] text-[#d4d4d8] hover:text-white border border-[#2e2e38] disabled:opacity-30 transition-colors"
+              title="Open in new window"
+            >
+              <ExternalLink size={14} />
+            </button>
+            <button
+              onClick={onRefresh}
+              className="p-2 rounded-xl bg-[#202026] hover:bg-[#282830] text-[#d4d4d8] hover:text-white border border-[#2e2e38] transition-colors"
+              title="Reload sandbox"
+            >
+              <RotateCcw size={14} />
+            </button>
+            <div className="w-[1px] h-4 bg-[#27272a] mx-0.5" />
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-[#71717a] hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+              title="Close preview"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleDownload}
-            disabled={!htmlCode}
-            className="p-1.5 rounded-xl text-[#a1a1aa] hover:text-white hover:bg-[#27272a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Download HTML"
-          >
-            <Download size={15} />
-          </button>
-          <button
-            onClick={handleOpenNewTab}
-            disabled={!htmlCode}
-            className="p-1.5 rounded-xl text-[#a1a1aa] hover:text-white hover:bg-[#27272a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Open in new window"
-          >
-            <ExternalLink size={15} />
-          </button>
-          <button
-            onClick={onRefresh}
-            className="p-1.5 rounded-xl text-[#a1a1aa] hover:text-white hover:bg-[#27272a] transition-colors"
-            title="Reload sandbox"
-          >
-            <RotateCcw size={15} />
-          </button>
-          <div className="w-[1px] h-3.5 bg-[#27272a] mx-1" />
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-[#a1a1aa] hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-            title="Close preview"
-          >
-            <X size={16} />
-          </button>
+        {/* Sandboxed iframe */}
+        <div className="flex-1 bg-[#09090b] relative overflow-hidden">
+          <iframe
+            ref={iframeRef}
+            className="w-full h-full border-none bg-white"
+            title="Applet Sandbox"
+            sandbox="allow-scripts allow-modals allow-forms"
+          />
         </div>
       </div>
-
-      {/* Sandboxed iframe */}
-      <div className="flex-1 bg-[#18181b] relative overflow-hidden">
-        <iframe
-          ref={iframeRef}
-          className="w-full h-full border-none bg-white"
-          title="Applet Sandbox"
-          sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
-        />
-      </div>
-    </aside>
+    </div>
   );
 };

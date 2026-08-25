@@ -1,4 +1,4 @@
-import { ModelConfig, ChatMessage, AppSettings, Provider, ProjectFile, AgentStepEvent } from '../types';
+import { ModelConfig, ChatMessage, AppSettings, Provider, ProjectFile, GeneratedFile, AgentStepEvent } from '../types';
 import {
   AGENT_TOOLS,
   webSearch,
@@ -389,7 +389,7 @@ export const MODELS: Record<string, ModelConfig> = {
 
 export const ROUTE_MAP: Record<string, string[]> = {
   code: ['qwen/qwen3-coder-480b-a35b-instruct', 'qwen/qwen3-coder-30b-a3b-instruct', 'deepseek-ai/deepseek-v3.2'],
-  think: ['deepseek/deepseek-r1', 'deepseek-ai/deepseek-v3.1-terminus', 'qwen/qwen3.5-397b-a17b'],
+  think: ['deepseek-ai/deepseek-r1', 'deepseek-ai/deepseek-v3.1-terminus', 'qwen/qwen3.5-397b-a17b'],
   fast: ['groq/gpt-oss-20b', 'groq/gpt-oss-120b', 'google/gemma-3n-e2b-it'],
   write: ['nvidia/llama-3.3-nemotron-super-49b-v1.5', 'minimaxai/minimax-m2.1', 'openai/gpt-oss-120b'],
   general: ['qwen/qwen3-coder-480b-a35b-instruct', 'openai/gpt-oss-120b', 'minimaxai/minimax-m2.1']
@@ -466,7 +466,8 @@ export function buildCtx(
   settings: AppSettings,
   projectFiles: ProjectFile[],
   modelId: string,
-  forceFlat: boolean = false
+  forceFlat: boolean = false,
+  generatedFiles: GeneratedFile[] = []
 ): any[] {
   const cfg = MODELS[modelId];
   let sys = settings.sys || DEFAULT_SYS;
@@ -487,6 +488,16 @@ export function buildCtx(
     sys += '\n\n📁 Project Files:\n';
     projectFiles.forEach(f => {
       sys += `\n[${f.name}]\n\`\`\`\n${f.content}\n\`\`\`\n`;
+    });
+  }
+
+  // Include generated artifacts that aren't already listed in projectFiles
+  const projectFileNames = new Set(projectFiles.map(pf => pf.name.toLowerCase()));
+  const extraArtifacts = (generatedFiles || []).filter(gf => !projectFileNames.has(gf.name.toLowerCase()));
+  if (extraArtifacts.length) {
+    sys += '\n\n🎨 Created Artifacts / Workspace Files:\n';
+    extraArtifacts.forEach(f => {
+      sys += `\n[Artifact: ${f.name} (${f.language || 'code'})]\n\`\`\`${f.language || ''}\n${f.content}\n\`\`\`\n`;
     });
   }
 

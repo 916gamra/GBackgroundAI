@@ -9,8 +9,10 @@ import {
   Provider,
   ProjectFile,
   Snippet,
-  AgentStepEvent
+  AgentStepEvent,
+  GeneratedFile
 } from './types';
+import { ArtifactsPanel } from './components/Chat/ArtifactsPanel';
 import {
   DEFAULT_SYS,
   MODELS,
@@ -48,9 +50,15 @@ import {
   vectorRagSearch,
   generateImageTool,
   elevenLabsTTS,
-  chatAnalytics
+  chatAnalytics,
+  executeDataAnalyst,
+  executePdfAnalyzer,
+  triggerN8nAutomation,
+  freeTTSSTT
 } from './services/agentTools';
+import { PremiumAvatar } from './components/PremiumAvatar';
 import { Header } from './components/Header';
+import { resolveAgentBehavior } from './bot';
 import { ChatPage } from './components/Chat/ChatPage';
 import { InputArea } from './components/InputArea';
 import { LivePreview } from './components/LivePreview';
@@ -61,6 +69,7 @@ import { ProjectModal } from './components/Modals/ProjectModal';
 import { SnippetsModal } from './components/Modals/SnippetsModal';
 import { SettingsPage } from './components/Pages/SettingsPage';
 import { WelcomeView } from './components/Pages/WelcomeView';
+import { speakText, stopSpeech } from './services/speechUtils';
 
 const DEFAULT_SETTINGS: AppSettings = {
   mod: 'qwen/qwen3-coder-480b-a35b-instruct',
@@ -159,7 +168,13 @@ export default function App() {
     }
   };
 
-  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(() => {
+    try {
+      const saved = localStorage.getItem('gbai_project_files_v13');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
   const [snippets, setSnippets] = useState<Snippet[]>(() => {
     try {
       const saved = localStorage.getItem('gbai_snippets_v13');
@@ -174,6 +189,24 @@ export default function App() {
   // UI state
   const [showSplashScreen, setShowSplashScreen] = useState(true);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isArtifactsOpen, setIsArtifactsOpen] = useState(false);
+  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>(() => {
+    try {
+      const saved = localStorage.getItem('gbai_artifacts_v13');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      {
+        id: 'demo-1',
+        name: 'App.tsx',
+        type: 'code',
+        language: 'typescript',
+        content: 'export const SampleWidget = () => {\n  return (\n    <div className="p-4 bg-zinc-900 text-white rounded-xl shadow-lg">\n      <h3 className="text-lg font-bold">Samsung One UI / Claude Artifacts</h3>\n      <p className="text-sm text-zinc-400">Generated artifacts and file manager active.</p>\n    </div>\n  );\n};',
+        createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ];
+  });
+  const [activeArtifact, setActiveArtifact] = useState<GeneratedFile | null>(null);
   const [previewHtml, setPreviewHtml] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -195,9 +228,21 @@ export default function App() {
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   const [typingStatus, setTypingStatus] = useState('');
   const [typingElapsed, setTypingElapsed] = useState(0);
+  const [isJustFinished, setIsJustFinished] = useState(false);
+  const [hasRecentError, setHasRecentError] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const timerIntervalRef = useRef<any>(null);
+
+  // Active agent avatar dynamic behavior resolution
+  const currentAgentBehavior = resolveAgentBehavior({
+    isBusy,
+    isStreaming,
+    isAgentRunning,
+    typingStatus,
+    hasError: hasRecentError,
+    isSuccess: isJustFinished
+  });
 
   // Active session helper
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
@@ -253,6 +298,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gbai_snippets_v13', JSON.stringify(snippets));
   }, [snippets]);
+
+  // Persist project files
+  useEffect(() => {
+    localStorage.setItem('gbai_project_files_v13', JSON.stringify(projectFiles));
+  }, [projectFiles]);
+
+  // Persist artifacts
+  useEffect(() => {
+    localStorage.setItem('gbai_artifacts_v13', JSON.stringify(generatedFiles));
+  }, [generatedFiles]);
 
   // Keyboard shortcut listener (ESC to close modals and stop generation)
   useEffect(() => {
@@ -342,13 +397,51 @@ export default function App() {
         case 'exec_js':
           result = await execJS(args.code);
           break;
-        case 'create_file':
-          // Also if it's HTML, update sandbox
-          if (args.filename.endsWith('.html') || args.filename.endsWith('.htm')) {
-            setPreviewHtml(args.content);
+        case 'create_file': {
+          const fn = args.filename || `file_${Date.now()}.txt`;
+          const ct = args.content || '';
+          const ext = fn.split('.').pop()?.toLowerCase() || '';
+          const lang = ext === 'tsx' || ext === 'ts' ? 'typescript' : ext === 'jsx' || ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : ext === 'html' || ext === 'htm' ? 'html' : ext === 'css' ? 'css' : ext === 'json' ? 'json' : 'text';
+
+          setGeneratedFiles(prev => {
+            const idx = prev.findIndex(f => f.name.toLowerCase() === fn.toLowerCase());
+            const art: GeneratedFile = {
+              id: idx >= 0 ? prev[idx].id : `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              name: fn,
+              type: 'code',
+              language: lang,
+              content: ct,
+              createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = art;
+              return updated;
+            }
+            return [art, ...prev];
+          });
+
+          setProjectFiles(prev => {
+            const idx = prev.findIndex(f => f.name.toLowerCase() === fn.toLowerCase());
+            const pf: ProjectFile = {
+              name: fn,
+              size: ct.length,
+              content: ct
+            };
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = pf;
+              return updated;
+            }
+            return [...prev, pf];
+          });
+
+          if (fn.endsWith('.html') || fn.endsWith('.htm')) {
+            setPreviewHtml(ct);
           }
-          result = `File "${args.filename}" created with ${args.content.length} characters.`;
+          result = `File "${fn}" created/updated in Artifacts & Project workspace (${ct.length} chars).`;
           break;
+        }
         case 'math_eval':
           result = mathEval(args.expression);
           break;
@@ -412,6 +505,18 @@ export default function App() {
         case 'chat_analytics':
           result = chatAnalytics();
           break;
+        case 'data_analyst':
+          result = await executeDataAnalyst(args.filename, args.action, args.query, (msg) => setTypingStatus(msg));
+          break;
+        case 'pdf_analyzer':
+          result = await executePdfAnalyzer(args.filename, args.action, args.page_start || 1, args.page_end, args.keyword, (msg) => setTypingStatus(msg));
+          break;
+        case 'n8n_automation':
+          result = await triggerN8nAutomation(args.webhook_url, args.payload);
+          break;
+        case 'free_tts_stt':
+          result = freeTTSSTT(args.text, args.lang || 'en');
+          break;
         default:
           // Check custom tools defined in settings
           const customToolMatch = settings.customTools?.find(ct => ct.id === fn);
@@ -440,11 +545,74 @@ export default function App() {
     }
   };
 
+  const extractArtifacts = (text: string) => {
+    if (!text) return;
+    const codeBlockRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
+    let match;
+    let newFiles: GeneratedFile[] = [];
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      const lang = match[1] || 'text';
+      const content = match[2];
+      if (!content.trim()) continue;
+
+      const ext = lang === 'typescript' || lang === 'tsx' ? 'tsx' : lang === 'javascript' || lang === 'jsx' ? 'jsx' : lang === 'python' ? 'py' : lang === 'html' ? 'html' : lang === 'css' ? 'css' : lang === 'json' ? 'json' : 'txt';
+      
+      const fnMatch = content.match(/(?:\/\/|\/\*|<!--|\#)\s*(?:filename|file|title):\s*([a-zA-Z0-9_\-./]+)/i);
+      let fileName = fnMatch ? fnMatch[1].trim() : '';
+      if (!fileName) {
+        fileName = `artifact_${Date.now().toString().slice(-4)}.${ext}`;
+      }
+
+      newFiles.push({
+        id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: fileName,
+        type: 'code',
+        language: lang,
+        content: content,
+        createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+
+    if (newFiles.length > 0) {
+      setGeneratedFiles(prev => {
+        let updated = [...prev];
+        for (const nf of newFiles) {
+          const idx = updated.findIndex(f => f.name.toLowerCase() === nf.name.toLowerCase());
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], content: nf.content, language: nf.language, createdAt: nf.createdAt };
+          } else {
+            updated = [nf, ...updated];
+          }
+        }
+        return updated;
+      });
+
+      setProjectFiles(prev => {
+        let updated = [...prev];
+        for (const nf of newFiles) {
+          const idx = updated.findIndex(f => f.name.toLowerCase() === nf.name.toLowerCase());
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], content: nf.content, size: nf.content.length };
+          } else {
+            updated.push({
+              name: nf.name,
+              type: 'file',
+              size: nf.content.length,
+              content: nf.content
+            });
+          }
+        }
+        return updated;
+      });
+    }
+  };
+
   // Main Send handler
   const handleSend = async (
     text: string,
     visionFile?: { name: string; url: string },
-    overrideSessionId?: string
+    overrideSessionId?: string,
+    overrideHistory?: ChatMessage[]
   ) => {
     if (isBusy) return;
 
@@ -483,7 +651,8 @@ export default function App() {
       vi: visionFile?.url || null
     };
 
-    const currentHistory = [...(targetSession.history || []), userMessage];
+    const baseHistory = overrideHistory !== undefined ? overrideHistory : (targetSession.history || []);
+    const currentHistory = [...baseHistory, userMessage];
 
     // Update active session with user message
     setSessions(prev => {
@@ -556,7 +725,7 @@ export default function App() {
         endpoint,
         apiKey: cleanApiKey,
         model: cfg?.mid || finalTargetModelId,
-        messages: buildCtx(currentHistory, settings, projectFiles, finalTargetModelId, false),
+        messages: buildCtx(currentHistory, settings, projectFiles, finalTargetModelId, false, generatedFiles),
         temperature: settings.tmp ?? cfg?.t ?? 0.7,
         topP: cfg?.p || 1,
         maxTokens: parseInt(settings.maxTok) || cfg?.mk || 4096,
@@ -578,6 +747,7 @@ export default function App() {
           executeTool: executeAgentTool,
           adapter,
           requestTemplate: requestPayload,
+          buildMessages: (hist: any[]) => buildCtx(hist, settings, projectFiles, finalTargetModelId, false, generatedFiles),
           maxIterations: 8
         };
 
@@ -614,6 +784,9 @@ export default function App() {
         setSessions(prev =>
           prev.map(s => (s.id === targetSId ? { ...s, history: currentLoopHistory } : s))
         );
+
+        setIsJustFinished(true);
+        setTimeout(() => setIsJustFinished(false), 3200);
 
       } else {
         // ══════ STANDARD STREAMING MODE (Unified Engine) ══════
@@ -655,13 +828,19 @@ export default function App() {
         };
 
         checkHtmlCodeForPreview(finalAiMessage.content || '');
+        extractArtifacts(finalAiMessage.content || '');
 
         setSessions(prev =>
           prev.map(s => (s.id === targetSId ? { ...s, history: [...currentHistory, finalAiMessage] } : s))
         );
+
+        setIsJustFinished(true);
+        setTimeout(() => setIsJustFinished(false), 3200);
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
+        setHasRecentError(true);
+        setTimeout(() => setHasRecentError(false), 4000);
         const errorMsg: ChatMessage = {
           role: 'assistant',
           content: `⚠️ Connection Error: ${err.message}\n\nPlease check your API key and endpoint configuration in Settings.`,
@@ -670,7 +849,7 @@ export default function App() {
           ts: Date.now()
         };
         setSessions(prev =>
-          prev.map(s => (s.id === activeSession.id ? { ...s, history: [...currentHistory, errorMsg] } : s))
+          prev.map(s => (s.id === targetSId ? { ...s, history: [...currentHistory, errorMsg] } : s))
         );
       }
     } finally {
@@ -771,7 +950,7 @@ export default function App() {
     setSessions(prev =>
       prev.map(s => (s.id === activeSession.id ? { ...s, history: trimmedHistory } : s))
     );
-    handleSend(newText);
+    handleSend(newText, undefined, activeSession.id, trimmedHistory);
   };
 
   const handleDeleteMessage = (index: number) => {
@@ -797,16 +976,11 @@ export default function App() {
     setSessions(prev =>
       prev.map(s => (s.id === activeSession.id ? { ...s, history: trimmedHistory } : s))
     );
-    handleSend(lastUserMsg.content || '');
+    handleSend(lastUserMsg.content || '', undefined, activeSession.id, trimmedHistory);
   };
 
   const handleSpeak = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const clean = text.replace(/```[\s\S]*?```/g, ' [Code Block] ').replace(/[`#*_~]/g, '').slice(0, 1000);
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.rate = settings.ttsSpeed || 1;
-    window.speechSynthesis.speak(utterance);
+    speakText(text);
   };
 
   const handleAddProjectFiles = (fileList: FileList) => {
@@ -814,13 +988,25 @@ export default function App() {
       if (file.size > 5 * 1024 * 1024) return;
       const reader = new FileReader();
       reader.onload = e => {
+        const content = (e.target?.result as string) || '';
+        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        const lang = ext === 'tsx' || ext === 'ts' ? 'typescript' : ext === 'jsx' || ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : ext === 'html' || ext === 'htm' ? 'html' : ext === 'css' ? 'css' : ext === 'json' ? 'json' : 'text';
+
         setProjectFiles(prev => [
-          ...prev.filter(f => f.name !== file.name),
+          ...prev.filter(f => f.name.toLowerCase() !== file.name.toLowerCase()),
+          { name: file.name, content, size: file.size }
+        ]);
+
+        setGeneratedFiles(prev => [
           {
+            id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: file.name,
-            content: e.target?.result as string,
-            size: file.size
-          }
+            type: 'code',
+            language: lang,
+            content: content,
+            createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          },
+          ...prev.filter(f => f.name.toLowerCase() !== file.name.toLowerCase())
         ]);
       };
       reader.readAsText(file);
@@ -850,12 +1036,13 @@ export default function App() {
       {showSplashScreen && (
         <div className="fixed inset-0 z-[100] bg-[#050508] flex flex-col items-center justify-center gap-6 animate-fadeIn transition-opacity duration-500">
           <div className="relative flex items-center justify-center">
-            <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-[var(--accent)] to-purple-600 animate-pulse blur-xl opacity-60 absolute" />
-            <div className="w-20 h-20 rounded-3xl bg-[#121216] border border-[var(--accent)]/50 flex items-center justify-center text-[var(--accent)] relative shadow-2xl shadow-[var(--accent-light)]">
-              <Sparkles size={38} className="animate-spin-slow" />
-            </div>
+            <div className="w-28 h-28 rounded-3xl bg-gradient-to-tr from-[var(--accent)] to-purple-600 animate-pulse blur-2xl opacity-50 absolute" />
+            <PremiumAvatar
+              status="idle"
+              className="w-20 h-20 !rounded-3xl shadow-2xl shadow-[var(--accent-light)] relative z-10 border border-[var(--accent)]/50"
+            />
           </div>
-          <div className="flex flex-col items-center gap-1 text-center">
+          <div className="flex flex-col items-center gap-1.5 text-center">
             <h1 className="text-2xl font-black text-white tracking-wider">GBG AI STUDIO</h1>
             <span className="text-xs text-[#a1a1aa] font-mono tracking-widest uppercase">Beast v13 • Next Generation AI</span>
           </div>
@@ -874,11 +1061,15 @@ export default function App() {
         onToggleSearch={() => setIsSearchOpen(prev => !prev)}
         onTogglePreview={() => setIsPreviewOpen(prev => !prev)}
         isPreviewOpen={isPreviewOpen}
+        onToggleArtifacts={() => setIsArtifactsOpen(prev => !prev)}
+        isArtifactsOpen={isArtifactsOpen}
+        artifactCount={generatedFiles.length}
         onExportChat={handleExportChat}
         onClearChat={handleClearChat}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenProject={() => setIsProjectModalOpen(true)}
         projectCount={projectFiles.length}
+        agentStatus={currentAgentBehavior.state}
       />
 
       {/* Main Content Area: Welcome Screen or Chat Page */}
@@ -950,6 +1141,28 @@ export default function App() {
               onClose={() => setIsPreviewOpen(false)}
               onRefresh={() => setPreviewHtml(prev => prev + ' ')}
             />
+
+            {/* Artifacts & File Manager Sheet / Floating Viewer */}
+            {isArtifactsOpen && (
+              <ArtifactsPanel
+                files={generatedFiles}
+                activeFile={activeArtifact}
+                onSelectFile={file => setActiveArtifact(file)}
+                onDeleteFile={(id, e) => {
+                  e.stopPropagation();
+                  const targetFile = generatedFiles.find(f => f.id === id);
+                  setGeneratedFiles(prev => prev.filter(f => f.id !== id));
+                  if (targetFile) {
+                    setProjectFiles(prev => prev.filter(f => f.name.toLowerCase() !== targetFile.name.toLowerCase()));
+                  }
+                  if (activeArtifact?.id === id) setActiveArtifact(null);
+                }}
+                onClose={() => {
+                  setIsArtifactsOpen(false);
+                  setActiveArtifact(null);
+                }}
+              />
+            )}
           </div>
         )}
       </main>
@@ -1038,7 +1251,7 @@ export default function App() {
         onUpdateProvider={updatedProv => {
           const nextProviders = providers.map(p => p.id === updatedProv.id ? updatedProv : p);
           setProviders(nextProviders);
-          localStorage.setItem('gbg_ai_providers', JSON.stringify(nextProviders));
+          localStorage.setItem('gbai_providers_v13', JSON.stringify(nextProviders));
         }}
         onSwitchProvider={id => handleSelectProvider(id)}
       />
@@ -1048,8 +1261,17 @@ export default function App() {
         onClose={() => setIsProjectModalOpen(false)}
         projectFiles={projectFiles}
         onAddFiles={handleAddProjectFiles}
-        onRemoveFile={index => setProjectFiles(prev => prev.filter((_, i) => i !== index))}
-        onClearFiles={() => setProjectFiles([])}
+        onRemoveFile={index => {
+          const fileToRemove = projectFiles[index];
+          setProjectFiles(prev => prev.filter((_, i) => i !== index));
+          if (fileToRemove) {
+            setGeneratedFiles(prev => prev.filter(f => f.name.toLowerCase() !== fileToRemove.name.toLowerCase()));
+          }
+        }}
+        onClearFiles={() => {
+          setProjectFiles([]);
+          setGeneratedFiles([]);
+        }}
         onExportProject={handleExportProject}
       />
 

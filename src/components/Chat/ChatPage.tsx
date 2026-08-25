@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Check, Zap, Globe, Terminal, Code, BarChart3, Calculator, BookOpen } from 'lucide-react';
+import { ChevronDown, Check, Zap, Globe, Terminal, Code, BarChart3, Calculator, BookOpen, Clock } from 'lucide-react';
 import { UserBubble } from './UserBubble';
 import { AgentBubble } from './AgentBubble';
 import { ToolBubble } from './ToolBubble';
@@ -117,6 +117,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       case 'make_chart': return <BarChart3 size={13} className="text-purple-400" />;
       case 'math_eval': return <Calculator size={13} className="text-pink-400" />;
       case 'wiki_search': return <BookOpen size={13} className="text-cyan-400" />;
+      case 'data_analyst': return <Terminal size={13} className="text-emerald-400" />;
+      case 'pdf_analyzer': return <BookOpen size={13} className="text-sky-400" />;
+      case 'n8n_automation': return <Globe size={13} className="text-blue-400" />;
+      case 'free_tts_stt': return <Clock size={13} className="text-yellow-400" />;
       default: return <Zap size={13} className="text-[var(--accent)]" />;
     }
   };

@@ -51,14 +51,14 @@ export class OpenAICompatibleAdapter implements AIProviderAdapter {
         }
       });
       
-      if (!res.ok) return [];
+      if (!res.ok) return this.getDefaultModels();
       
       const data = await res.json();
-      return (data.data || []).map((m: any): ModelInfo => ({
+      const list = (data.data || []).map((m: any): ModelInfo => ({
         id: m.id,
         name: m.id,
         providerId: this.id,
-        contextWindow: 8192, // Default fallback, as /models doesn't always provide this
+        contextWindow: 8192,
         supportsVision: m.id.toLowerCase().includes('vision'),
         supportsTools: true,
         supportsStreaming: true,
@@ -67,10 +67,54 @@ export class OpenAICompatibleAdapter implements AIProviderAdapter {
         source: 'remote',
         description: `Dynamically fetched from ${endpoint}`
       }));
+      return list.length > 0 ? list : this.getDefaultModels();
     } catch (err) {
-      console.error('Failed to list models', err);
-      return [];
+      return this.getDefaultModels();
     }
+  }
+
+  private getDefaultModels(): ModelInfo[] {
+    return [
+      {
+        id: 'nvidia/llama-3.1-nemotron-70b-instruct',
+        name: 'Llama 3.1 Nemotron 70B Instruct',
+        providerId: this.id,
+        contextWindow: 131072,
+        supportsVision: false,
+        supportsTools: true,
+        supportsStreaming: true,
+        supportsReasoning: true,
+        category: 'think',
+        source: 'remote',
+        description: 'Default high-performance reasoning model'
+      },
+      {
+        id: 'deepseek-ai/deepseek-r1',
+        name: 'DeepSeek R1',
+        providerId: this.id,
+        contextWindow: 64000,
+        supportsVision: false,
+        supportsTools: true,
+        supportsStreaming: true,
+        supportsReasoning: true,
+        category: 'think',
+        source: 'remote',
+        description: 'Advanced reasoning model'
+      },
+      {
+        id: 'meta/llama-3.3-70b-instruct',
+        name: 'Llama 3.3 70B Instruct',
+        providerId: this.id,
+        contextWindow: 128000,
+        supportsVision: false,
+        supportsTools: true,
+        supportsStreaming: true,
+        supportsReasoning: false,
+        category: 'general',
+        source: 'remote',
+        description: 'State of the art open model'
+      }
+    ];
   }
 
   streamChat(request: ChatRequestPayload): AsyncGenerator<StreamEvent, void, unknown> {

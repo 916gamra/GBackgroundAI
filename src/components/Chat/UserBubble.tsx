@@ -84,7 +84,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({
             </div>
           </div>
         ) : (
-          <div className="whitespace-pre-wrap leading-relaxed text-[#f4f4f5] break-words">
+          <div dir="auto" className="whitespace-pre-wrap leading-relaxed text-[#f4f4f5] break-words text-start">
             {msg.content}
           </div>
         )}

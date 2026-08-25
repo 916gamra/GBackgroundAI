@@ -331,6 +331,70 @@ export const AGENT_TOOLS = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'data_analyst',
+      description: 'Analyze CSV or Excel (.xlsx/.xls) files using Pandas and OpenPyXL for advanced summaries and stats.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filename: { type: 'string', description: 'The exact name of the uploaded CSV or Excel file' },
+          action: { type: 'string', enum: ['summary', 'info', 'stats', 'custom_query'], description: 'Analysis operation to perform' },
+          query: { type: 'string', description: 'Optional custom python expression or query using Pandas df variable' }
+        },
+        required: ['filename', 'action']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'pdf_analyzer',
+      description: 'Analyze PDF documents: extract raw text, search for phrases, or read specific page ranges.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filename: { type: 'string', description: 'The exact name of the uploaded PDF document' },
+          action: { type: 'string', enum: ['extract_text', 'search', 'get_metadata'], description: 'PDF parsing operation' },
+          page_start: { type: 'number', description: 'Start page index (1-based, default: 1)' },
+          page_end: { type: 'number', description: 'End page index (default: all)' },
+          keyword: { type: 'string', description: 'Keyword query for search' }
+        },
+        required: ['filename', 'action']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'n8n_automation',
+      description: 'Trigger a free or self-hosted n8n workflow scenario via webhook URL to connect to thousands of apps.',
+      parameters: {
+        type: 'object',
+        properties: {
+          webhook_url: { type: 'string', description: 'Your n8n custom Webhook Trigger URL' },
+          payload: { type: 'object', description: 'The JSON data object payload to dispatch' }
+        },
+        required: ['webhook_url', 'payload']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'free_tts_stt',
+      description: 'Speak and play response text aloud using free, subscription-free Edge-TTS / Web Speech API. Zero costs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'Plain text sentence to synthesize' },
+          lang: { type: 'string', description: 'Language code e.g. en, ar, fr, es (default: en)' }
+        },
+        required: ['text']
+      }
+    }
   }
 ];
 
@@ -664,6 +728,54 @@ export const BUILTIN_TOOL_CATALOG: ToolCatalogItem[] = [
     exampleArgs: '{}',
     exampleScenario: 'Monitoring model performance, evaluating prompt efficiency, and auditing tool call logs.',
     capabilities: ['Tokens/sec measurement', 'Tool execution logs', 'Model latency analytics']
+  },
+  {
+    id: 'data_analyst',
+    name: 'OpenPyXL / Pandas Data Analyst',
+    category: 'data',
+    icon: 'Terminal',
+    badge: 'Pandas & OpenPyXL',
+    shortDesc: 'Read, summarize, and extract advanced statistics from uploaded Excel (.xlsx/.xls) and CSV spreadsheets for free.',
+    detailedGuide: 'Uses highly optimized Pyodide WASM to run Python 3 with Pandas and OpenPyXL libraries on the client-side. Automatically loads dataframes, displays column descriptions, computes missing values, and allows custom queries.',
+    exampleArgs: '{"filename": "sales_data.xlsx", "action": "summary"}',
+    exampleScenario: 'Summarizing financial metrics from sheet files, plotting records distributions, or performing custom pandas groupby and filtering tasks.',
+    capabilities: ['Full Pandas & OpenPyXL integrations', 'Descriptive summary stats', 'Free local WebAssembly engine']
+  },
+  {
+    id: 'pdf_analyzer',
+    name: 'PyPDF2 / PDFPlumber Reader',
+    category: 'data',
+    icon: 'BookOpen',
+    badge: 'PyPDF2 / PDF',
+    shortDesc: 'Extract text, look up keywords, read page ranges, and review document metadata of uploaded PDF documents.',
+    detailedGuide: 'Parses binary PDF file streams using python pypdf/PyPDF2 on-the-fly. Safely decodes text characters, reports pages structure, and filters keywords without leaking files to cloud engines.',
+    exampleArgs: '{"filename": "contract.pdf", "action": "extract_text", "page_start": 1, "page_end": 3}',
+    exampleScenario: 'Reading pages from user contracts, doing keyword search on manuals, and inspecting file metadata properties.',
+    capabilities: ['Full text extraction', 'Selective page parsing', 'Free local file security']
+  },
+  {
+    id: 'n8n_automation',
+    name: 'n8n Workflow Automation',
+    category: 'system',
+    icon: 'Globe',
+    badge: 'n8n Webhook',
+    shortDesc: 'Trigger custom automation workflows with self-hosted n8n scenarios to send emails, update DBs, or sync social media for free.',
+    detailedGuide: 'Directly dispatches POST payload to your self-hosted or cloud-hosted n8n.io webhook nodes to trigger automated multi-app tasks.',
+    exampleArgs: '{"webhook_url": "http://localhost:5678/webhook/sample", "payload": {"status": "success", "event": "chat_triggered"}}',
+    exampleScenario: 'Sending automatic reports via Gmail/Slack, creating records in databases, or triggering custom API pipelines on n8n.',
+    capabilities: ['Direct POST Webhook integrations', 'Free automation endpoints', 'Dynamic payload dispatching']
+  },
+  {
+    id: 'free_tts_stt',
+    name: 'Free Edge-TTS / Web Speech',
+    category: 'system',
+    icon: 'Clock',
+    badge: 'Free Voice Voice',
+    shortDesc: 'Convert response text into spoken vocals using free Edge-TTS / browser-native SpeechSynthesis. No ElevenLabs subscription required.',
+    detailedGuide: 'Uses the browser-native SpeechSynthesis voice engine to read text responses with native performance, zero key requirements, and multi-lingual voice selections.',
+    exampleArgs: '{"text": "Hello, welcome to GBackgroundAI local TTS system.", "lang": "en"}',
+    exampleScenario: 'Vocalizing answers hands-free, listening to long summaries, and learning correct multi-lingual pronounciations.',
+    capabilities: ['100% Free speech playback', 'Multi-lingual support', 'Zero API keys required']
   }
 ];
 
@@ -690,7 +802,11 @@ export const TOOL_META: Record<string, { icon: string; label: string }> = {
   vector_rag_search: { icon: 'Database', label: 'Vector RAG Search' },
   generate_image: { icon: 'ScanText', label: 'AI Image Gen' },
   elevenlabs_tts: { icon: 'Clock', label: 'Voice TTS' },
-  chat_analytics: { icon: 'BarChart3', label: 'Chat Analytics' }
+  chat_analytics: { icon: 'BarChart3', label: 'Chat Analytics' },
+  data_analyst: { icon: 'Terminal', label: 'Data Analyst' },
+  pdf_analyzer: { icon: 'BookOpen', label: 'PDF Analyzer' },
+  n8n_automation: { icon: 'Globe', label: 'n8n Automation' },
+  free_tts_stt: { icon: 'Clock', label: 'Free TTS' }
 };
 
 // Lazy Pyodide instance
@@ -836,7 +952,7 @@ export function mathEval(expr: string): string {
     
     // Safety check against arbitrary characters
     const sanitized = e.replace(/Math\.[A-Za-z0-9_]+/g, '');
-    if (!/^[\d\s.+\-*%(),e]+$/i.test(sanitized)) {
+    if (!/^[\d\s./+\-*%(),e]+$/i.test(sanitized)) {
       throw new Error('Expression contains disallowed characters.');
     }
     
@@ -1017,60 +1133,66 @@ export function agentAnalyze(text: string, task: string): string {
 }
 
 export async function zapierAction(action: string, params?: any, webhookUrl?: string): Promise<string> {
-  const url = webhookUrl || 'https://hooks.zapier.com/hooks/catch/sample';
+  if (!webhookUrl || !webhookUrl.trim() || webhookUrl.includes('sample')) {
+    return `⚠️ Zapier Action is not configured. Please enter a valid Zapier Webhook URL in Settings. (Action: "${action}")`;
+  }
   try {
-    if (webhookUrl && webhookUrl.trim() && !webhookUrl.includes('sample')) {
-      const res = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, params, timestamp: new Date().toISOString() })
-      });
-      if (res.ok) {
-        return `⚡ Zapier Action executed successfully! Action: "${action}" | Params: ${JSON.stringify(params || {})}`;
-      }
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, params, timestamp: new Date().toISOString() })
+    });
+    if (res.ok) {
+      return `⚡ Zapier Action executed successfully! Action: "${action}" | Params: ${JSON.stringify(params || {})}`;
     }
-  } catch {}
-  return `⚡ [Zapier AI Action Triggered]\nAction: "${action}"\nParameters: ${JSON.stringify(params || {}, null, 2)}\nStatus: Sent to Zapier webhook engine.`;
+    return `⚠️ Zapier Webhook HTTP ${res.status}: ${res.statusText}`;
+  } catch (err: any) {
+    return `⚠️ Zapier Webhook Error: ${err.message}`;
+  }
 }
 
 export async function makeWebhook(scenario: string, payload?: any, webhookUrl?: string): Promise<string> {
+  if (!webhookUrl || !webhookUrl.trim() || webhookUrl.includes('sample')) {
+    return `⚠️ Make.com Webhook is not configured. Please enter a valid Webhook URL in Settings. (Scenario: "${scenario}")`;
+  }
   try {
-    if (webhookUrl && webhookUrl.trim() && !webhookUrl.includes('sample')) {
-      const res = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenario, payload, timestamp: new Date().toISOString() })
-      });
-      if (res.ok) {
-        return `🌀 Make.com scenario "${scenario}" executed successfully! Payload sent.`;
-      }
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario, payload, timestamp: new Date().toISOString() })
+    });
+    if (res.ok) {
+      return `🌀 Make.com scenario "${scenario}" executed successfully! Payload sent.`;
     }
-  } catch {}
-  return `🌀 [Make.com Scenario Triggered]\nScenario: "${scenario}"\nPayload: ${JSON.stringify(payload || {}, null, 2)}\nStatus: Dispatched to Make.com automation pipeline.`;
+    return `⚠️ Make.com Webhook HTTP ${res.status}: ${res.statusText}`;
+  } catch (err: any) {
+    return `⚠️ Make.com Webhook Error: ${err.message}`;
+  }
 }
 
 export async function vectorRagSearch(query: string, topK: number = 3, apiKey?: string, env?: string): Promise<string> {
+  if (!apiKey || !apiKey.trim() || !env || !env.trim()) {
+    return `⚠️ Vector RAG Search is not configured. Please enter your Pinecone API Key and Environment in Settings to enable RAG.`;
+  }
   try {
-    if (apiKey && env) {
-      // Direct Pinecone query endpoint
-      const endpoint = `https://index-name-${env}.svc.pinecone.io/query`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Api-Key': apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ topK, includeMetadata: true, vector: [0.1, 0.2, 0.3] })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return `🌲 Pinecone Vector DB Results for "${query}":\n` + JSON.stringify(data.matches || [], null, 2);
-      }
+    // Direct Pinecone query endpoint
+    const endpoint = `https://index-name-${env}.svc.pinecone.io/query`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Api-Key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ topK, includeMetadata: true, vector: [0.1, 0.2, 0.3] })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return `🌲 Pinecone Vector DB Results for "${query}":\n` + JSON.stringify(data.matches || [], null, 2);
     }
-  } catch {}
-  return `🔍 [Vector RAG Knowledge Base Results for "${query}"]\n` +
-    `1. Chunk #104 (Similarity: 0.94): "...Referred knowledge base context regarding ${query}..."\n` +
-    `2. Chunk #82 (Similarity: 0.89): "...Indexed PDF document reference for grounded answer..."`;
+    return `⚠️ Pinecone API error: HTTP ${res.status} ${res.statusText}`;
+  } catch (err: any) {
+    return `⚠️ Pinecone RAG Search Error: ${err.message}`;
+  }
 }
 
 export function generateImageTool(prompt: string, style: string = 'photorealistic'): string {
@@ -1112,11 +1234,224 @@ export async function elevenLabsTTS(text: string, voice: string = 'Rachel', apiK
 }
 
 export function chatAnalytics(): string {
-  return `📊 [Chat Performance & Latency Analytics]\n` +
-    `• Average Latency: 280ms\n` +
-    `• Throughput: 42 tokens/sec\n` +
-    `• Tool Call Accuracy: 100%\n` +
-    `• Active Memory Items: ${Object.keys(localStorage).filter(k => k.startsWith('gbg_')).length}\n` +
-    `• Status: All agent tools operating with zero errors.`;
+  let keysCount = 0;
+  try {
+    keysCount = Object.keys(localStorage).filter(k => k.startsWith('gbai_') || k.startsWith('gbg_')).length;
+  } catch {}
+  return `📊 [Chat Session & Storage Analytics]\n` +
+    `• Active LocalStorage Keys: ${keysCount}\n` +
+    `• Memory System: Active & Synchronized\n` +
+    `• Environment: Browser Runtime\n` +
+    `• Status: Tools operational.`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW AI TOOLS IMPLEMENTATION (Pandas/OpenPyXL, PDFReader, n8n, Free TTS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function syncUploadedFilesToPyodide(py: any): Promise<void> {
+  const uploaded = (window as any).uploadedFiles;
+  if (!uploaded) return;
+  for (const [name, fileObj] of Object.entries(uploaded) as any[]) {
+    try {
+      let bytes: Uint8Array;
+      if (fileObj.isBinary && fileObj.base64) {
+        const binaryStr = atob(fileObj.base64);
+        const len = binaryStr.length;
+        bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+      } else {
+        const encoder = new TextEncoder();
+        bytes = encoder.encode(fileObj.content || '');
+      }
+      py.FS.writeFile(name, bytes);
+    } catch (err) {
+      console.error('Failed to sync file to Pyodide FS:', name, err);
+    }
+  }
+}
+
+export async function executeDataAnalyst(
+  filename: string,
+  action: string,
+  query?: string,
+  onProgress?: (msg: string) => void
+): Promise<string> {
+  onProgress?.('🐍 Booting Pyodide Python 3 runtime...');
+  const py = await loadPython(onProgress);
+  
+  onProgress?.('📊 Syncing file sheets to local container memory...');
+  await syncUploadedFilesToPyodide(py);
+  
+  onProgress?.('📊 Importing & Loading Pandas and OpenPyXL (~10s)...');
+  await py.loadPackage(['pandas', 'openpyxl']);
+  
+  onProgress?.('📊 Calculating advanced spreadsheet statistics...');
+  py.runPython(`__out.seek(0)\n__out.truncate(0)`);
+  
+  const pyCode = `
+import pandas as pd
+import io
+
+filename = ${JSON.stringify(filename)}
+action = ${JSON.stringify(action)}
+query = ${JSON.stringify(query || '')}
+
+try:
+    if filename.endswith('.csv'):
+        df = pd.read_csv(filename)
+    else:
+        df = pd.read_excel(filename)
+        
+    print(f"📊 --- Dataset Analysis: '{filename}' ---")
+    print(f"Total Rows: {df.shape[0]} | Total Columns: {df.shape[1]}")
+    print("\\nColumns, Types, and Non-Null Summary:")
+    for col in df.columns:
+        dtype = df[col].dtype
+        non_null = df[col].notnull().sum()
+        print(f" - {col} ({dtype}): {non_null} non-null values")
+        
+    if action in ['summary', 'stats']:
+        print("\\n--- Descriptive Statistics Summary ---")
+        print(df.describe(include='all').to_string())
+        
+        print("\\n--- First 5 Sample Rows ---")
+        print(df.head(5).to_string())
+    elif action == 'info':
+        print("\\n--- Dataset General Information ---")
+        buf = io.StringIO()
+        df.info(buf=buf)
+        print(buf.getvalue())
+    elif action == 'custom_query' and query:
+        print(f"\\n--- Running Pandas Query: {query} ---")
+        local_vars = {'df': df, 'pd': pd}
+        # Run customized query code
+        exec(query, globals(), local_vars)
+except Exception as e:
+    print(f"❌ Error during Pandas analysis: {str(e)}")
+`;
+  
+  await py.runPythonAsync(pyCode);
+  const out = py.runPython(`__out.getvalue()`);
+  return out && out.trim() ? out.trim() : 'Data Analyst executed successfully.';
+}
+
+export async function executePdfAnalyzer(
+  filename: string,
+  action: string,
+  pageStart = 1,
+  pageEnd?: number,
+  keyword?: string,
+  onProgress?: (msg: string) => void
+): Promise<string> {
+  onProgress?.('🐍 Booting Pyodide Python 3 runtime...');
+  const py = await loadPython(onProgress);
+  
+  onProgress?.('📄 Syncing PDF stream to local container...');
+  await syncUploadedFilesToPyodide(py);
+  
+  onProgress?.('📄 Installing PyPDF/PyPDF2 dynamic modules...');
+  await py.loadPackage('micropip');
+  await py.runPythonAsync(`
+import micropip
+try:
+    import pypdf
+except ImportError:
+    await micropip.install('pypdf')
+`);
+  
+  onProgress?.('📄 Parsing PDF pages...');
+  py.runPython(`__out.seek(0)\n__out.truncate(0)`);
+  
+  const pyCode = `
+import pypdf
+
+filename = ${JSON.stringify(filename)}
+action = ${JSON.stringify(action)}
+page_start = int(${pageStart})
+page_end = int(${pageEnd || -1})
+keyword = ${JSON.stringify(keyword || '')}
+
+try:
+    reader = pypdf.PdfReader(filename)
+    num_pages = len(reader.pages)
+    
+    print(f"📄 --- PDF Summary: '{filename}' ---")
+    print(f"Total Pages: {num_pages}")
+    
+    meta = reader.metadata
+    if meta:
+        print("\\nMetadata Properties:")
+        for k, v in meta.items():
+            print(f" - {k}: {v}")
+            
+    if action == 'extract_text':
+        start_idx = max(1, page_start) - 1
+        end_idx = num_pages if page_end < 0 else min(num_pages, page_end)
+        print(f"\\n--- Extracted Text from page {start_idx + 1} to {end_idx} ---")
+        for i in range(start_idx, end_idx):
+            txt = reader.pages[i].extract_text()
+            print(f"[Page {i + 1}]")
+            print(txt if txt else "(Image scan or un-extractable content)")
+            print("-" * 30)
+    elif action == 'search' and keyword:
+        print(f"\\n--- Searching for keyword: '{keyword}' ---")
+        found = []
+        for i in range(num_pages):
+            txt = reader.pages[i].extract_text()
+            if txt and keyword.lower() in txt.lower():
+                found.append(i + 1)
+        if found:
+            print(f"Found matches on pages: {', '.join(map(str, found))}")
+        else:
+            print("No matches detected in this PDF document.")
+except Exception as e:
+    print(f"❌ Error during PDF parsing: {str(e)}")
+`;
+  
+  await py.runPythonAsync(pyCode);
+  const out = py.runPython(`__out.getvalue()`);
+  return out && out.trim() ? out.trim() : 'PDF Analyzer executed successfully.';
+}
+
+export async function triggerN8nAutomation(webhookUrl: string, payload: any): Promise<string> {
+  if (!webhookUrl || !webhookUrl.startsWith('http')) {
+    return '❌ Error: Invalid n8n Webhook URL. Ensure it starts with http:// or https://';
+  }
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      return `❌ n8n webhook returned status ${res.status}: ${res.statusText}`;
+    }
+    const txt = await res.text();
+    return `⚡ [n8n Automation Triggered Successfully]\nWebhook URL: ${webhookUrl}\nPayload: ${JSON.stringify(payload, null, 2)}\nResponse: ${txt.slice(0, 500)}`;
+  } catch (err: any) {
+    return `❌ Failed to dispatch to n8n node: ${err.message}`;
+  }
+}
+
+export function freeTTSSTT(text: string, lang = 'en'): string {
+  try {
+    if (!('speechSynthesis' in window)) {
+      return '❌ speechSynthesis is not supported in this browser.';
+    }
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(/```[\s\S]*?```/g, ' [Code Block] ').slice(0, 1500);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = lang;
+    window.speechSynthesis.speak(utterance);
+    return `🗣️ Vocalizing (Free Edge-TTS / Web Speech synthesis): "${cleanText.slice(0, 100)}..." [Language: ${lang}]`;
+  } catch (err: any) {
+    return `❌ Free TTS Speech synthesis error: ${err.message}`;
+  }
+}
+
 

@@ -14,9 +14,12 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import { ChatMessage } from '../../types';
 import { MODELS, parseThink } from '../../services/aiService';
+import { PremiumAvatar } from '../PremiumAvatar';
+import { resolveAgentBehavior } from '../../bot';
 
 interface AgentBubbleProps {
   msg?: ChatMessage;
@@ -78,9 +81,10 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
 
   const renderMarkdown = (text: string) => {
     try {
-      return marked.parse(text || '', { async: false }) as string;
+      const parsedHtml = marked.parse(text || '', { async: false }) as string;
+      return DOMPurify.sanitize(parsedHtml);
     } catch {
-      return text;
+      return DOMPurify.sanitize(text || '');
     }
   };
 
@@ -97,7 +101,8 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
         parts.push(
           <div
             key={`text-${lastIndex}`}
-            className="markdown-body text-[#e4e4e7] leading-relaxed"
+            dir="auto"
+            className="markdown-body text-[#e4e4e7] leading-relaxed text-start"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(textBefore) }}
           />
         );
@@ -164,7 +169,8 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
       parts.push(
         <div
           key={`text-${lastIndex}`}
-          className="markdown-body text-[#e4e4e7] leading-relaxed"
+          dir="auto"
+          className="markdown-body text-[#e4e4e7] leading-relaxed text-start"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(remainingText) }}
         />
       );
@@ -176,13 +182,24 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
   const modelKey = msg?.mod || currentModelId;
   const modelInfo = MODELS[modelKey];
 
+  // Resolve dynamic avatar behavior
+  const bubbleBehavior = resolveAgentBehavior({
+    isStreaming: isStreamingMode,
+    isBusy: isStreamingMode,
+    typingStatus,
+    hasError: !!msg?.error,
+    isAgentRunning: msg?.ag || typingStatus?.includes('tool') || typingStatus?.includes('exec')
+  });
+
   return (
     <div className="flex flex-col gap-1.5 w-full items-start group my-2 animate-fadeIn">
       {/* Header Info */}
       <div className="flex items-center gap-2 px-1 text-[11px] font-mono text-[#71717a] select-none">
-        <div className="w-5 h-5 rounded-full bg-[var(--accent)]/15 border border-[var(--accent)]/40 flex items-center justify-center text-[var(--accent)] shrink-0">
-          <Bot size={12} className={isStreamingMode ? 'animate-spin-slow' : ''} />
-        </div>
+        <PremiumAvatar
+          behaviorState={bubbleBehavior.state}
+          interactive={true}
+          className="w-5 h-5 !rounded-lg"
+        />
         <span className="font-semibold text-[#f4f4f5]">
           {modelInfo?.name || 'AI Assistant'}
         </span>
@@ -197,7 +214,7 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
           </span>
         )}
         {isStreamingMode && (
-          <span className="text-[var(--accent)] font-medium">({typingStatus || 'Generating...'}) {typingElapsed > 0 ? `${typingElapsed.toFixed(1)}s` : ''}</span>
+          <span className="text-[var(--accent)] font-medium">({typingStatus || bubbleBehavior.labelAr}) {typingElapsed > 0 ? `${typingElapsed.toFixed(1)}s` : ''}</span>
         )}
         {msg?.ts && !isStreamingMode && (
           <span className="text-[10px] text-[#52525b]">
@@ -250,15 +267,15 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
             <div className="flex-1 whitespace-pre-wrap">{msg.content}</div>
           </div>
         ) : (
-          <div className={isStreamingMode ? 'streaming-cursor' : ''}>
+          <div className={isStreamingMode ? 'streaming-cursor' : ''} dir="auto">
             {renderCustomMessage(displayContent)}
           </div>
         )}
       </div>
 
-      {/* Action Buttons Toolbar for Agent */}
+      {/* Action Buttons Toolbar for Agent - Always Visible */}
       {!isStreamingMode && msg && (
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-1 select-none">
+        <div className="flex items-center gap-1.5 ml-1 mt-1 select-none text-xs">
           <button
             onClick={() => onCopy(displayContent, msgId)}
             className="px-2.5 py-1 rounded-lg text-[#71717a] hover:text-white hover:bg-[#1f1f23] transition-colors text-[11px] flex items-center gap-1 cursor-pointer"

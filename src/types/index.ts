@@ -1,3 +1,25 @@
+export interface GeneratedFile {
+  id: string;
+  name: string;
+  type: 'code' | 'image' | 'text' | 'pdf';
+  content: string;
+  language?: string;
+  createdAt: string;
+}
+
+export interface UnifiedModel {
+  id: string;
+  name: string;
+  provider: string;
+  isSingleUrl: boolean;
+}
+
+export interface RouterConfig {
+  apiKey: string;
+  modelsUrl: string;
+  fallbackSingleUrl?: string;
+}
+
 export interface ModelConfig {
   name: string;
   pv: string; // 'nvidia' | 'groq' | 'custom' | or any custom provider ID
@@ -119,4 +141,10 @@ export interface AgentStepEvent {
   label: string;
   status: 'running' | 'done' | 'error';
   resultPreview?: string;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errorType?: 'invalid_key' | 'network_error' | 'unknown';
+  message: string;
 }

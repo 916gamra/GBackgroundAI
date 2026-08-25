@@ -73,11 +73,20 @@ async def health_check():
         "python_version": sys.version
     }
 
+EXEC_AUTH_TOKEN = os.getenv("EXEC_AUTH_TOKEN", "gbai-secret-token")
+
 @app.post("/api/python/exec")
-async def execute_python_code(req: PythonExecRequest):
+async def execute_python_code(
+    req: PythonExecRequest,
+    authorization: Optional[str] = Header(None)
+):
     """
-    Executes arbitrary Python code safely with redirected stdout/stderr.
+    Executes Python code safely with authorization verification.
     """
+    if os.getenv("REQUIRE_EXEC_AUTH", "false").lower() == "true":
+        token = (authorization or "").replace("Bearer ", "").strip()
+        if token != EXEC_AUTH_TOKEN:
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid execution token")
     output_buffer = io.StringIO()
     start_time = time.time()
     

@@ -38,6 +38,7 @@ import { AppSettings, Provider, ModelConfig } from '../../types';
 import { DEFAULT_SYS, MODELS, sanitizeApiKey, normalizeChatEndpoint } from '../../services/aiService';
 import { ToolsSettings } from './ToolsSettings';
 import { getAdapterForProvider } from '../../services/providers';
+import { PremiumAvatar } from '../PremiumAvatar';
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -1548,14 +1549,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             {/* ══════════════════════════════════════════════════════════════ */}
             {activeTab === 'persona' && (
               <div className="flex flex-col gap-5 animate-fadeIn">
-                <div className="pb-2 border-b border-[#27272a]">
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Sparkles size={20} className="text-[var(--accent)]" />
-                    <span>System Persona & Persistent Memory</span>
-                  </h2>
-                  <p className="text-xs text-[#a1a1aa]">
-                    Craft the assistant's behavior, instructions, identity, and teach it permanent facts.
-                  </p>
+                <div className="pb-3 border-b border-[#27272a] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <PremiumAvatar status="idle" className="w-10 h-10 !rounded-2xl" />
+                    <div>
+                      <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <span>System Persona & Persistent Memory</span>
+                      </h2>
+                      <p className="text-xs text-[#a1a1aa]">
+                        Craft the assistant's behavior, instructions, identity, and teach it permanent facts.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Persona Presets */}

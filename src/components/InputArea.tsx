@@ -107,12 +107,25 @@ export const InputArea: React.FC<InputAreaProps> = ({
   }, [isPlusMenuOpen]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
+    const val = e.target.value;
+    setText(val);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   };
+
+  const slashCommands = [
+    { cmd: '/analyze_excel', label: 'Analyze Spreadsheet / Excel / CSV data with Pandas', icon: Terminal },
+    { cmd: '/read_pdf', label: 'Extract text & search keywords in PDF documents', icon: Sparkles },
+    { cmd: '/n8n', label: 'Trigger n8n automation workflow via webhook', icon: Globe },
+    { cmd: '/tts', label: 'Vocalize text aloud using Free TTS', icon: Volume2 },
+    { cmd: '/help', label: 'List all active tools and capabilities', icon: Cpu }
+  ];
+
+  const filteredSlashCommands = text.startsWith('/')
+    ? slashCommands.filter(c => c.cmd.toLowerCase().includes(text.toLowerCase()))
+    : [];
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -218,8 +231,9 @@ export const InputArea: React.FC<InputAreaProps> = ({
           <button
             onClick={onOpenModelPicker}
             className="flex items-center gap-1.5 text-[var(--accent)] font-semibold hover:opacity-80 transition-opacity bg-[#18181b] px-2 py-0.5 rounded-lg border border-[#27272a]"
+            title={activeProvider && activeProvider.status === 'error' ? 'Model disconnected / Error' : 'Model working & active'}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+            <span className={`w-1.5 h-1.5 rounded-full ${!activeProvider || activeProvider.status !== 'error' ? 'bg-emerald-500 shadow-[0_0_6px_#10b981]' : 'bg-rose-500 shadow-[0_0_6px_#f43f5e]'}`} />
             <span className="truncate max-w-[110px] sm:max-w-[160px]">{currentModel?.name || settings.mod}</span>
             <ChevronDown size={11} className="opacity-60 shrink-0" />
           </button>
@@ -423,16 +437,48 @@ export const InputArea: React.FC<InputAreaProps> = ({
             )}
           </div>
 
-          {/* Text input */}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleTextChange}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            placeholder="Ask, run Python, build apps..."
-            className="flex-1 bg-transparent text-[#f4f4f5] text-sm md:text-[14.5px] font-sans placeholder-[#71717a] outline-none resize-none py-2 px-1 max-h-[120px] leading-relaxed"
-          />
+          {/* Text input container with Slash Commands Popup */}
+          <div className="relative flex-1 flex flex-col">
+            {filteredSlashCommands.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-[#18181b] border border-[#27272a] rounded-2xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 backdrop-blur-xl animate-slideUp">
+                <div className="px-3 py-1.5 text-[11px] font-mono text-[#a1a1aa] border-b border-[#27272a] flex items-center justify-between">
+                  <span>✨ Agent Skill Shortcuts</span>
+                  <span className="text-[10px]">Tab / Click to select</span>
+                </div>
+                {filteredSlashCommands.map((sc) => {
+                  const IconComp = sc.icon;
+                  return (
+                    <button
+                      key={sc.cmd}
+                      onClick={() => {
+                        setText(sc.cmd + ' ');
+                        textareaRef.current?.focus();
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-[#27272a] text-left transition-colors cursor-pointer group"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-[var(--accent-light)] flex items-center justify-center text-[var(--accent)] shrink-0">
+                        <IconComp size={15} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-mono font-bold text-white group-hover:text-[var(--accent)]">{sc.cmd}</span>
+                        <span className="text-[11px] text-[#a1a1aa]">{sc.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              placeholder="Ask, type '/' for commands, build apps..."
+              className="w-full bg-transparent text-[#f4f4f5] text-sm md:text-[14.5px] font-sans placeholder-[#71717a] outline-none resize-none py-2 px-1 max-h-[120px] leading-relaxed"
+            />
+          </div>
 
           {/* Voice input mic */}
           <button
