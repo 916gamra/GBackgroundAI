@@ -54,10 +54,12 @@ import {
   executeDataAnalyst,
   executePdfAnalyzer,
   triggerN8nAutomation,
-  freeTTSSTT
+  freeTTSSTT,
+  executeSandboxedCustomTool
 } from './services/agentTools';
 import { PremiumAvatar } from './components/PremiumAvatar';
 import { Header } from './components/Header';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { resolveAgentBehavior } from './bot';
 import { ChatPage } from './components/Chat/ChatPage';
 import { InputArea } from './components/InputArea';
@@ -279,34 +281,65 @@ export default function App() {
     }
   }, [settings.accent, settings.mode]);
 
-  // Persist sessions
+  // Debounced persistence for heavy state objects to prevent frame stalls
   useEffect(() => {
-    localStorage.setItem('gbai_sessions_v13', JSON.stringify(sessions));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('gbai_sessions_v13', JSON.stringify(sessions));
+      } catch (e) {
+        console.warn('Failed to persist sessions:', e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [sessions]);
 
-  // Persist settings
   useEffect(() => {
-    localStorage.setItem('gbai_settings_v13', JSON.stringify(settings));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('gbai_settings_v13', JSON.stringify(settings));
+      } catch (e) {
+        console.warn('Failed to persist settings:', e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [settings]);
 
-  // Persist providers
   useEffect(() => {
-    localStorage.setItem('gbai_providers_v13', JSON.stringify(providers));
+    try {
+      localStorage.setItem('gbai_providers_v13', JSON.stringify(providers));
+    } catch (e) {
+      console.warn('Failed to persist providers:', e);
+    }
   }, [providers]);
 
-  // Persist snippets
   useEffect(() => {
-    localStorage.setItem('gbai_snippets_v13', JSON.stringify(snippets));
+    try {
+      localStorage.setItem('gbai_snippets_v13', JSON.stringify(snippets));
+    } catch (e) {
+      console.warn('Failed to persist snippets:', e);
+    }
   }, [snippets]);
 
-  // Persist project files
   useEffect(() => {
-    localStorage.setItem('gbai_project_files_v13', JSON.stringify(projectFiles));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('gbai_project_files_v13', JSON.stringify(projectFiles));
+      } catch (e) {
+        console.warn('Failed to persist project files:', e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [projectFiles]);
 
-  // Persist artifacts
   useEffect(() => {
-    localStorage.setItem('gbai_artifacts_v13', JSON.stringify(generatedFiles));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('gbai_artifacts_v13', JSON.stringify(generatedFiles));
+      } catch (e) {
+        console.warn('Failed to persist artifacts:', e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [generatedFiles]);
 
   // Keyboard shortcut listener (ESC to close modals and stop generation)
@@ -518,16 +551,10 @@ export default function App() {
           result = freeTTSSTT(args.text, args.lang || 'en');
           break;
         default:
-          // Check custom tools defined in settings
+          // Check custom tools defined in settings executed safely in isolated Web Worker
           const customToolMatch = settings.customTools?.find(ct => ct.id === fn);
           if (customToolMatch) {
-            try {
-              const runFunc = new Function('args', 'settings', customToolMatch.code);
-              const customRes = await runFunc(args, settings);
-              result = typeof customRes === 'object' ? JSON.stringify(customRes, null, 2) : String(customRes);
-            } catch (cErr: any) {
-              result = `Custom tool error: ${cErr.message}`;
-            }
+            result = await executeSandboxedCustomTool(customToolMatch.code, args, settings);
           } else {
             result = `[Unknown tool: ${fn}]`;
           }
@@ -547,7 +574,7 @@ export default function App() {
 
   const extractArtifacts = (text: string) => {
     if (!text) return;
-    const codeBlockRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
+    const codeBlockRegex = new RegExp('```([a-zA-Z0-9_-]*)\\n([\\s\\S]*?)```', 'g');
     let match;
     let newFiles: GeneratedFile[] = [];
     while ((match = codeBlockRegex.exec(text)) !== null) {
@@ -1073,99 +1100,101 @@ export default function App() {
       />
 
       {/* Main Content Area: Welcome Screen or Chat Page */}
-      <main className={`flex-1 mt-[58px] ${activeSessionId === 'welcome' ? 'mb-0' : 'mb-[110px]'} relative overflow-hidden flex flex-col`}>
-        {activeSessionId === 'welcome' ? (
-          <div className="flex-1 flex flex-col overflow-hidden relative">
-            <WelcomeView
-              sessions={sessions}
-              activeProvider={activeProvider}
-              settings={settings}
-              onStartNewChat={handleCreateSession}
-              onSelectSession={id => setActiveSessionId(id)}
-              onDeleteSession={handleDeleteSession}
-              onQuickPrompt={handleQuickPrompt}
-              onOpenProviderPicker={() => setIsProviderPickerOpen(true)}
-              onOpenModelPicker={() => setIsModelPickerOpen(true)}
-            />
-            {/* Live Code Preview Sandbox */}
-            <LivePreview
-              htmlCode={previewHtml}
-              isOpen={isPreviewOpen}
-              onClose={() => setIsPreviewOpen(false)}
-              onRefresh={() => setPreviewHtml(prev => prev + ' ')}
-            />
-          </div>
-        ) : (
-          <div className="flex-1 flex overflow-hidden relative">
-            <ChatPage
-              history={activeSession ? activeSession.history : []}
-              streamingContent={streamingContent}
-              streamingThinking={streamingThinking}
-              isStreaming={isStreaming}
-              agentSteps={agentSteps}
-              isAgentRunning={isAgentRunning}
-              typingStatus={typingStatus}
-              typingElapsed={typingElapsed}
-              currentModelId={settings.mod}
-              onQuickPrompt={text => handleSend(text)}
-              onPreviewCode={code => {
-                setPreviewHtml(code);
-                setIsPreviewOpen(true);
-              }}
-              onRetry={handleRetry}
-              onEditResend={handleEditResend}
-              onDeleteMessage={handleDeleteMessage}
-              onSpeak={handleSpeak}
-              searchQuery={searchQuery}
-              isPreviewOpen={isPreviewOpen}
-              settings={settings}
-              onUpdateSettings={newS => setSettings(prev => ({ ...prev, ...newS }))}
-              activeProvider={activeProvider}
-              onOpenModelPicker={() => setIsModelPickerOpen(true)}
-              onOpenProviderPicker={() => setIsProviderPickerOpen(true)}
-              onOpenProjectModal={() => setIsProjectModalOpen(true)}
-              onOpenSnippetsModal={() => setIsSnippetsModalOpen(true)}
-              onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-              onTogglePreview={() => setIsPreviewOpen(prev => !prev)}
-              onSend={handleSend}
-              onStop={handleStopGeneration}
-              isBusy={isBusy}
-              totalSessionTokens={totalSessionTokens}
-              projectCount={projectFiles.length}
-            />
-
-            {/* Live Code Preview Sandbox */}
-            <LivePreview
-              htmlCode={previewHtml}
-              isOpen={isPreviewOpen}
-              onClose={() => setIsPreviewOpen(false)}
-              onRefresh={() => setPreviewHtml(prev => prev + ' ')}
-            />
-
-            {/* Artifacts & File Manager Sheet / Floating Viewer */}
-            {isArtifactsOpen && (
-              <ArtifactsPanel
-                files={generatedFiles}
-                activeFile={activeArtifact}
-                onSelectFile={file => setActiveArtifact(file)}
-                onDeleteFile={(id, e) => {
-                  e.stopPropagation();
-                  const targetFile = generatedFiles.find(f => f.id === id);
-                  setGeneratedFiles(prev => prev.filter(f => f.id !== id));
-                  if (targetFile) {
-                    setProjectFiles(prev => prev.filter(f => f.name.toLowerCase() !== targetFile.name.toLowerCase()));
-                  }
-                  if (activeArtifact?.id === id) setActiveArtifact(null);
-                }}
-                onClose={() => {
-                  setIsArtifactsOpen(false);
-                  setActiveArtifact(null);
-                }}
+      <ErrorBoundary fallbackTitle="Application Workspace Render Error">
+        <main className={`flex-1 mt-[58px] ${activeSessionId === 'welcome' ? 'mb-0' : 'mb-[110px]'} relative overflow-hidden flex flex-col`}>
+          {activeSessionId === 'welcome' ? (
+            <div className="flex-1 flex flex-col overflow-hidden relative">
+              <WelcomeView
+                sessions={sessions}
+                activeProvider={activeProvider}
+                settings={settings}
+                onStartNewChat={handleCreateSession}
+                onSelectSession={id => setActiveSessionId(id)}
+                onDeleteSession={handleDeleteSession}
+                onQuickPrompt={handleQuickPrompt}
+                onOpenProviderPicker={() => setIsProviderPickerOpen(true)}
+                onOpenModelPicker={() => setIsModelPickerOpen(true)}
               />
-            )}
-          </div>
-        )}
-      </main>
+              {/* Live Code Preview Sandbox */}
+              <LivePreview
+                htmlCode={previewHtml}
+                isOpen={isPreviewOpen}
+                onClose={() => setIsPreviewOpen(false)}
+                onRefresh={() => setPreviewHtml(prev => prev + ' ')}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 flex overflow-hidden relative">
+              <ChatPage
+                history={activeSession ? activeSession.history : []}
+                streamingContent={streamingContent}
+                streamingThinking={streamingThinking}
+                isStreaming={isStreaming}
+                agentSteps={agentSteps}
+                isAgentRunning={isAgentRunning}
+                typingStatus={typingStatus}
+                typingElapsed={typingElapsed}
+                currentModelId={settings.mod}
+                onQuickPrompt={text => handleSend(text)}
+                onPreviewCode={code => {
+                  setPreviewHtml(code);
+                  setIsPreviewOpen(true);
+                }}
+                onRetry={handleRetry}
+                onEditResend={handleEditResend}
+                onDeleteMessage={handleDeleteMessage}
+                onSpeak={handleSpeak}
+                searchQuery={searchQuery}
+                isPreviewOpen={isPreviewOpen}
+                settings={settings}
+                onUpdateSettings={newS => setSettings(prev => ({ ...prev, ...newS }))}
+                activeProvider={activeProvider}
+                onOpenModelPicker={() => setIsModelPickerOpen(true)}
+                onOpenProviderPicker={() => setIsProviderPickerOpen(true)}
+                onOpenProjectModal={() => setIsProjectModalOpen(true)}
+                onOpenSnippetsModal={() => setIsSnippetsModalOpen(true)}
+                onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+                onTogglePreview={() => setIsPreviewOpen(prev => !prev)}
+                onSend={handleSend}
+                onStop={handleStopGeneration}
+                isBusy={isBusy}
+                totalSessionTokens={totalSessionTokens}
+                projectCount={projectFiles.length}
+              />
+
+              {/* Live Code Preview Sandbox */}
+              <LivePreview
+                htmlCode={previewHtml}
+                isOpen={isPreviewOpen}
+                onClose={() => setIsPreviewOpen(false)}
+                onRefresh={() => setPreviewHtml(prev => prev + ' ')}
+              />
+
+              {/* Artifacts & File Manager Sheet / Floating Viewer */}
+              {isArtifactsOpen && (
+                <ArtifactsPanel
+                  files={generatedFiles}
+                  activeFile={activeArtifact}
+                  onSelectFile={file => setActiveArtifact(file)}
+                  onDeleteFile={(id, e) => {
+                    e.stopPropagation();
+                    const targetFile = generatedFiles.find(f => f.id === id);
+                    setGeneratedFiles(prev => prev.filter(f => f.id !== id));
+                    if (targetFile) {
+                      setProjectFiles(prev => prev.filter(f => f.name.toLowerCase() !== targetFile.name.toLowerCase()));
+                    }
+                    if (activeArtifact?.id === id) setActiveArtifact(null);
+                  }}
+                  onClose={() => {
+                    setIsArtifactsOpen(false);
+                    setActiveArtifact(null);
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </main>
+      </ErrorBoundary>
 
       {/* Global Bottom Input Area (Hidden on Welcome screen) */}
       {activeSessionId !== 'welcome' && (

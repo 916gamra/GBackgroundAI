@@ -1059,7 +1059,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
                             <div className="relative">
                               <input
-                                ref={el => (modelInputRefs.current[prov.id] = el)}
+                                ref={el => { modelInputRefs.current[prov.id] = el; }}
                                 type="text"
                                 disabled={prov.model === 'auto'}
                                 value={prov.model === 'auto' ? 'All Models Selected (Auto Task Router)' : prov.model}
@@ -1180,7 +1180,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                             <div className="relative">
                               <input
-                                ref={el => (keyInputRefs.current[prov.id] = el)}
+                                ref={el => { keyInputRefs.current[prov.id] = el; }}
                                 type={showApiKeys[prov.id] ? 'text' : 'password'}
                                 value={prov.apiKey}
                                 onChange={e => {

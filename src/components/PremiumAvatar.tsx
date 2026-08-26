@@ -58,7 +58,7 @@ export const PremiumAvatar: React.FC<PremiumAvatarProps> = ({
   const [mouseGaze, setMouseGaze] = useState<{ yaw: number; pitch: number }>({ yaw: 0, pitch: 0 });
   const [isHovered, setIsHovered] = useState(false);
 
-  const animRef = useRef<number>();
+  const animRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number>(Date.now());
   const blinkStateRef = useRef<{ isBlinking: boolean; blinkProgress: number; nextBlinkTime: number }>({
     isBlinking: false,

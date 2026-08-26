@@ -1454,4 +1454,82 @@ export function freeTTSSTT(text: string, lang = 'en'): string {
   }
 }
 
+/**
+ * Executes user-defined custom tool scripts safely in an isolated Web Worker.
+ * Bypasses direct window/DOM/localStorage/cookie access and enforces strict timeouts.
+ */
+export function executeSandboxedCustomTool(code: string, args: Record<string, any>, safeSettings: Record<string, any>): Promise<string> {
+  return new Promise(resolve => {
+    // Sanitize settings: strip any sensitive credentials before forwarding to custom user scripts
+    const sanitizedSettings = {
+      theme: safeSettings?.theme,
+      fontSize: safeSettings?.fontSize,
+      language: safeSettings?.language
+    };
+
+    const workerScript = `
+      self.onmessage = async function(e) {
+        const { code, args, settings } = e.data;
+        const logs = [];
+        const logFn = (...a) => logs.push(a.map(x => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' '));
+        const console = { log: logFn, warn: logFn, error: logFn, info: logFn };
+        
+        try {
+          // Wrapped in async function scope without access to window or document
+          const fn = new Function('args', 'settings', 'console', 'return (async () => { ' + code + ' })();');
+          const result = await fn(args, settings, console);
+          const formatted = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result !== undefined ? result : (logs.join('\\n') || 'Done'));
+          self.postMessage({ ok: true, output: formatted });
+        } catch (err) {
+          self.postMessage({ ok: false, error: err.message });
+        }
+      };
+    `;
+
+    const blob = new Blob([workerScript], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    let worker: Worker | null = null;
+    let isSettled = false;
+
+    const cleanup = () => {
+      if (isSettled) return;
+      isSettled = true;
+      if (worker) {
+        worker.terminate();
+        worker = null;
+      }
+      URL.revokeObjectURL(url);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve('⏱️ Custom tool execution timed out (5000ms sandbox limit)');
+    }, 5000);
+
+    try {
+      worker = new Worker(url);
+      worker.onmessage = e => {
+        clearTimeout(timer);
+        cleanup();
+        if (e.data.ok) {
+          resolve(e.data.output);
+        } else {
+          resolve(`Custom tool error: ${e.data.error}`);
+        }
+      };
+      worker.onerror = e => {
+        clearTimeout(timer);
+        cleanup();
+        resolve(`Custom tool worker runtime error: ${e.message}`);
+      };
+      worker.postMessage({ code, args, settings: sanitizedSettings });
+    } catch (err: any) {
+      clearTimeout(timer);
+      cleanup();
+      resolve(`Failed to spawn tool sandbox: ${err.message}`);
+    }
+  });
+}
+
+
 

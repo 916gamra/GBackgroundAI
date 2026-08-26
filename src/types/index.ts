@@ -45,6 +45,7 @@ export interface Provider {
   baseUrl: string;
   apiKey: string;
   model: string;
+  defaultModel?: string;
   isBuiltin?: boolean;
   pvType?: string; // 'openai-compatible' | 'gemini' | 'ollama'
   headers?: Record<string, string>;
@@ -87,6 +88,7 @@ export interface ProjectFile {
   name: string;
   content: string;
   size: number;
+  type?: string;
 }
 
 export interface Snippet {

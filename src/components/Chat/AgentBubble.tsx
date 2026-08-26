@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Bot,
   Copy,
@@ -40,7 +40,7 @@ interface AgentBubbleProps {
   typingElapsed?: number;
 }
 
-export const AgentBubble: React.FC<AgentBubbleProps> = ({
+export const AgentBubble: React.FC<AgentBubbleProps> = React.memo(({
   msg,
   index = 0,
   currentModelId,
@@ -60,7 +60,11 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
 
   // Prepare display content and thinking text
   const rawContent = isStreamingMode ? streamingContent : (msg?.content || '');
-  const parsed = msg?.content ? parseThink(msg.content) : { display: rawContent, thinking: msg?.think || '' };
+  const parsed = useMemo(() => {
+    if (msg?.content) return parseThink(msg.content);
+    return { display: rawContent, thinking: msg?.think || '' };
+  }, [msg?.content, msg?.think, rawContent]);
+
   const displayContent = isStreamingMode ? streamingContent : (parsed.display || msg?.content || '');
   const thinkingText = isStreamingMode ? streamingThinking : (msg?.think || parsed.thinking);
 
@@ -88,8 +92,9 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
     }
   };
 
-  // Enhance code blocks with preview and copy buttons
-  const renderCustomMessage = (content: string) => {
+  // Enhance code blocks with preview and copy buttons with memoization
+  const renderedMessageParts = useMemo(() => {
+    const content = displayContent;
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
@@ -177,7 +182,7 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
     }
 
     return parts;
-  };
+  }, [displayContent, copiedId, onPreviewCode, onCopy]);
 
   const modelKey = msg?.mod || currentModelId;
   const modelInfo = MODELS[modelKey];
@@ -268,7 +273,7 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
           </div>
         ) : (
           <div className={isStreamingMode ? 'streaming-cursor' : ''} dir="auto">
-            {renderCustomMessage(displayContent)}
+            {renderedMessageParts}
           </div>
         )}
       </div>
@@ -320,4 +325,4 @@ export const AgentBubble: React.FC<AgentBubbleProps> = ({
       )}
     </div>
   );
-};
+});

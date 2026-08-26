@@ -80,7 +80,7 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
   const [editingToolId, setEditingToolId] = useState<string | null>(null);
   const [customName, setCustomName] = useState('');
   const [customId, setCustomId] = useState('');
-  const [customCategory, setCustomCategory] = useState<string>('custom');
+  const [customCategory, setCustomCategory] = useState<'web' | 'code' | 'data' | 'system' | 'custom'>('custom');
   const [customDesc, setCustomDesc] = useState('');
   const [customParamsJson, setCustomParamsJson] = useState('{\n  "type": "object",\n  "properties": {\n    "input": {\n      "type": "string",\n      "description": "Input text to process"\n    }\n  },\n  "required": ["input"]\n}');
   const [customCode, setCustomCode] = useState('// JavaScript execution body. Receives (args, settings)\n// Example:\nconst result = "Processed: " + (args.input || "");\nreturn result;');
