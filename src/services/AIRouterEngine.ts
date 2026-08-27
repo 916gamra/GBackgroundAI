@@ -54,9 +54,22 @@ export class AIRouterEngine {
    * Routes the chat message to the correct endpoint based on model configuration.
    */
   async sendChatMessage(model: UnifiedModel, messages: any[], temperature: number = 0.5) {
-    const targetUrl = model.isSingleUrl && this.config.fallbackSingleUrl
-      ? this.config.fallbackSingleUrl
-      : `${this.config.modelsUrl}/chat/completions`;
+    let baseForChat: string;
+    if (model.isSingleUrl && this.config.fallbackSingleUrl) {
+      baseForChat = this.config.fallbackSingleUrl;
+    } else {
+      // modelsUrl is the /models listing endpoint; derive the chat base by stripping
+      // the trailing /models so we can append /chat/completions cleanly.
+      let base = (this.config.modelsUrl || '').trim().replace(/\/+$/, '');
+      if (base.endsWith('/models')) {
+        base = base.slice(0, -'/models'.length);
+      }
+      baseForChat = base;
+    }
+
+    const targetUrl = baseForChat.endsWith('/chat/completions')
+      ? baseForChat
+      : `${baseForChat}/chat/completions`;
 
     try {
       const response = await fetch(targetUrl, {

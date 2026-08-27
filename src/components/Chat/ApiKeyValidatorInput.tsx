@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { validateNvidiaApiKey } from '../../services/apiValidation';
 import { Key, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+
+const STORAGE_KEY = 'gbai_nvidia_api_key';
 
 interface ApiKeyValidatorInputProps {
   onValidated?: (key: string) => void;
@@ -10,6 +12,18 @@ export const ApiKeyValidatorInput: React.FC<ApiKeyValidatorInputProps> = ({ onVa
   const [apiKey, setApiKey] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [feedbackMessage, setFeedbackMessage] = useState('');
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setApiKey(stored);
+        setStatus('success');
+        setFeedbackMessage('تم استرجاع المفتاح المحفوظ مسبقاً.');
+        if (onValidated) onValidated(stored);
+      }
+    } catch {}
+  }, [onValidated]);
 
   const handleVerify = async () => {
     setStatus('loading');
@@ -21,7 +35,9 @@ export const ApiKeyValidatorInput: React.FC<ApiKeyValidatorInputProps> = ({ onVa
       setStatus('success');
       setFeedbackMessage(result.message);
       const clean = apiKey.trim();
-      localStorage.setItem('nvidia_api_key', clean);
+      try {
+        localStorage.setItem(STORAGE_KEY, clean);
+      } catch {}
       if (onValidated) {
         onValidated(clean);
       }

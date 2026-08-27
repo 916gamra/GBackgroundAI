@@ -183,12 +183,13 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
     setFetchSuccess(null);
 
     try {
-      let endpoint = activeProvider.baseUrl.trim();
-      if (endpoint.includes('/chat/completions')) {
-        endpoint = endpoint.replace('/chat/completions', '/models');
-      } else if (endpoint.endsWith('/')) {
-        endpoint = `${endpoint}models`;
-      } else if (!endpoint.endsWith('/models')) {
+      let endpoint = activeProvider.baseUrl.trim().replace(/\/+$/, '');
+      if (endpoint.endsWith('/chat/completions')) {
+        endpoint = endpoint.slice(0, -'/chat/completions'.length);
+      }
+      if (endpoint.endsWith('/models')) {
+        // already a models endpoint
+      } else {
         endpoint = `${endpoint}/models`;
       }
 

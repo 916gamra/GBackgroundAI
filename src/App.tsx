@@ -146,12 +146,24 @@ export default function App() {
   const [providers, setProviders] = useState<Provider[]>(() => {
     try {
       const saved = localStorage.getItem('gbai_providers_v13');
+      let parsed: Provider[] | null = null;
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
+        const p = JSON.parse(saved);
+        if (Array.isArray(p)) parsed = p;
       }
+      const list = parsed || DEFAULT_PROVIDERS;
+      // Hydrate the built-in NVIDIA provider with the validated key (if any)
+      try {
+        const storedNvidiaKey = localStorage.getItem('gbai_nvidia_api_key');
+        if (storedNvidiaKey) {
+          return list.map(p =>
+            p.id === 'nv-builtin' && !p.apiKey?.trim()
+              ? { ...p, apiKey: storedNvidiaKey }
+              : p
+          );
+        }
+      } catch {}
+      return list;
     } catch {}
     return DEFAULT_PROVIDERS;
   });
@@ -164,10 +176,40 @@ export default function App() {
     setActiveProviderId(providerId);
     const list = customProvList || providers;
     const prov = list.find(p => p.id === providerId);
-    if (prov) {
-      const targetModel = prov.model || (prov as any).defaultModel || 'auto';
-      setSettings(prev => ({ ...prev, mod: targetModel }));
-    }
+    if (!prov) return;
+
+    setSettings(prev => {
+      // If the provider has an explicit `model` configured, use it.
+      const configured = prov.model || (prov as any).defaultModel;
+      if (configured && configured !== 'auto') {
+        return { ...prev, mod: configured };
+      }
+
+      // Otherwise, check whether the currently selected model is usable on
+      // this provider. If not, fall back to a sensible default instead of
+      // silently sending a model id that the new provider doesn't host.
+      const allModels: Record<string, any> = { ...MODELS, ...(prev.customModels || {}) };
+      const currentCfg = allModels[prev.mod];
+      const pType = (prov.pvType || '').toLowerCase();
+      const pId = prov.id.toLowerCase();
+
+      const providerSupportsCurrent = currentCfg
+        ? currentCfg.pv === pType || currentCfg.pv === pId
+        : false;
+
+      if (providerSupportsCurrent) {
+        return prev;
+      }
+
+      const fallback = (() => {
+        if (pType === 'groq' || pId === 'gq-builtin') return 'llama-3.3-70b-versatile';
+        if (pType === 'nvidia' || pId === 'nv-builtin') return 'qwen/qwen3-coder-480b-a35b-instruct';
+        if (pType === 'google' || pType === 'gemini') return 'gemini-2.5-flash';
+        return prev.mod;
+      })();
+
+      return { ...prev, mod: fallback };
+    });
   };
 
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(() => {
