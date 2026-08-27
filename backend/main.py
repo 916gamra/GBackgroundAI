@@ -1,177 +1,171 @@
-#!/usr/bin/env python3
 """
-GBackgroundAI — High-Performance Python Backend Engine
-FastAPI + Multi-Model Proxy + Sandboxed Python REPL + Vector Memory + Agent Pipeline
-"""
+Lightweight CORS-bypass proxy for the GBackgroundAI frontend.
 
+The browser cannot call external APIs (Wikipedia, Serper, generic fetches,
+etc.) directly because those endpoints don't send CORS headers. This proxy
+forwards the request server-side, where CORS does not apply.
+
+Routes:
+  POST /api/web-search        -> Serper Google search
+  GET  /api/wiki?query=&lang= -> Wikipedia REST summary
+  GET  /api/fetch?url=        -> Generic URL fetch (returns text or json)
+  POST /api/validate-key      -> Validate NVIDIA NIM key (no CORS)
+  GET  /api/nvidia/models     -> List NVIDIA NIM models (no CORS)
+
+Run with:
+  pip install -r requirements.txt
+  uvicorn main:app --host 0.0.0.0 --port 8000
+
+Then point the frontend at this origin (see CORS_ORIGIN below).
+"""
 import os
-import sys
 import json
-import time
-import io
-import contextlib
-import traceback
-from typing import List, Dict, Any, Optional
+import logging
+from typing import Optional
+
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-app = FastAPI(
-    title="GBackgroundAI Backend Engine",
-    description="Autonomous Multi-Model AI Backend with Sandboxed Python Execution",
-    version="13.0.0"
-)
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("gbai-proxy")
 
+CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "http://localhost:3000")
+
+app = FastAPI(title="GBackgroundAI Proxy", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[CORS_ORIGIN, "http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# In-Memory Storage for Sessions & Context
-SESSIONS_DB: Dict[str, Any] = {}
-AGENT_MEMORY: Dict[str, str] = {}
+NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
+WIKIPEDIA_BASE = "https://{lang}.wikipedia.org/api/rest_v1"
+SERPER_URL = "https://google.serper.dev/search"
 
-class ChatMessagePayload(BaseModel):
-    role: str
-    content: Optional[str] = None
-    think: Optional[str] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
 
-class ChatRequest(BaseModel):
-    model: str = "qwen/qwen3-coder-480b-a35b-instruct"
-    messages: List[ChatMessagePayload]
-    provider: Optional[str] = "nvidia"
-    temperature: Optional[float] = 0.6
-    max_tokens: Optional[int] = 8192
-    system_prompt: Optional[str] = None
-    stream: Optional[bool] = True
+class WebSearchBody(BaseModel):
+    query: str
+    serper_key: Optional[str] = None
 
-class PythonExecRequest(BaseModel):
-    code: str
-    timeout_seconds: Optional[int] = 10
 
-class MemoryUpdateRequest(BaseModel):
-    key: str
-    value: str
+class ValidateKeyBody(BaseModel):
+    api_key: str
 
-# Endpoints
-EP_NVIDIA = "https://integrate.api.nvidia.com/v1/chat/completions"
-EP_GROQ = "https://api.groq.com/openai/v1/chat/completions"
+
+async def _safe_get(url: str, headers: dict, timeout: float = 10.0) -> httpx.Response:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        return await client.get(url, headers=headers)
+
 
 @app.get("/api/health")
-async def health_check():
-    return {
-        "status": "online",
-        "service": "GBackgroundAI Python Engine",
-        "version": "13.0.0",
-        "platform": sys.platform,
-        "python_version": sys.version
-    }
+async def health():
+    return {"status": "ok"}
 
-EXEC_AUTH_TOKEN = os.getenv("EXEC_AUTH_TOKEN", "gbai-secret-token")
 
-import builtins
-
-# Explicitly allowed safe built-in functions
-ALLOWED_BUILTINS = {
-    'abs': builtins.abs, 'all': builtins.all, 'any': builtins.any,
-    'bin': builtins.bin, 'bool': builtins.bool, 'chr': builtins.chr,
-    'dict': builtins.dict, 'divmod': builtins.divmod, 'enumerate': builtins.enumerate,
-    'filter': builtins.filter, 'float': builtins.float, 'format': builtins.format,
-    'frozenset': builtins.frozenset, 'hasattr': builtins.hasattr, 'hex': builtins.hex,
-    'int': builtins.int, 'isinstance': builtins.isinstance, 'issubclass': builtins.issubclass,
-    'len': builtins.len, 'list': builtins.list, 'map': builtins.map, 'max': builtins.max,
-    'min': builtins.min, 'next': builtins.next, 'oct': builtins.oct, 'ord': builtins.ord,
-    'pow': builtins.pow, 'print': builtins.print, 'range': builtins.range,
-    'repr': builtins.repr, 'reversed': builtins.reversed, 'round': builtins.round,
-    'set': builtins.set, 'slice': builtins.slice, 'sorted': builtins.sorted,
-    'str': builtins.str, 'sum': builtins.sum, 'tuple': builtins.tuple, 'type': builtins.type,
-    'zip': builtins.zip, 'True': True, 'False': False, 'None': None,
-}
-
-@app.post("/api/python/exec")
-async def execute_python_code(
-    req: PythonExecRequest,
-    authorization: Optional[str] = Header(None)
-):
-    """
-    Executes Python code safely inside restricted namespace.
-    """
-    if os.getenv("REQUIRE_EXEC_AUTH", "false").lower() == "true":
-        token = (authorization or "").replace("Bearer ", "").strip()
-        if token != EXEC_AUTH_TOKEN:
-            raise HTTPException(status_code=401, detail="Unauthorized: Invalid execution token")
-    
-    # Pre-execution AST / keyword sanitization
-    forbidden_keywords = ['__import__', 'eval(', 'exec(', 'open(', 'os.', 'sys.', 'subprocess', 'shutil', 'socket', 'pty']
-    for kw in forbidden_keywords:
-        if kw in req.code:
-            return {
-                "success": False,
-                "error": f"Security Exception: Use of forbidden keyword/function '{kw}' is restricted.",
-                "execution_time_ms": 0
-            }
-
-    output_buffer = io.StringIO()
-    start_time = time.time()
-    
-    # Safe global execution environment with restricted builtins
-    safe_globals = {
-        "__builtins__": ALLOWED_BUILTINS,
-        "math": __import__("math"),
-        "json": __import__("json"),
-        "re": __import__("re"),
-        "time": __import__("time"),
-        "datetime": __import__("datetime"),
-        "random": __import__("random"),
-    }
-    
-    # Optional data science modules if installed
-    for mod_name in ["pandas", "numpy", "matplotlib", "seaborn", "requests"]:
-        try:
-            safe_globals[mod_name] = __import__(mod_name)
-        except ImportError:
-            pass
-
+@app.post("/api/web-search")
+async def web_search(body: WebSearchBody):
+    if not body.serper_key:
+        raise HTTPException(status_code=400, detail="serper_key required")
+    if not body.query.strip():
+        raise HTTPException(status_code=400, detail="query required")
     try:
-        with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
-            exec(req.code, safe_globals)
-        elapsed = round((time.time() - start_time) * 1000, 2)
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                SERPER_URL,
+                headers={"X-API-KEY": body.serper_key, "Content-Type": "application/json"},
+                json={"q": body.query, "num": 6},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.HTTPError as e:
+        log.exception("web_search failed")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/api/wiki")
+async def wiki(query: str, lang: str = "en"):
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="query required")
+    title = query.strip().replace(" ", "_")
+    url = f"{WIKIPEDIA_BASE.format(lang=lang)}/page/summary/{title}"
+    try:
+        r = await _safe_get(url, headers={"Accept": "application/json"})
+        if r.status_code == 404:
+            # Fallback to search
+            search_url = f"{WIKIPEDIA_BASE.format(lang=lang)}/page/summary/{title}"
+            r = await _safe_get(search_url, headers={"Accept": "application/json"})
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=r.text[:500])
+        data = r.json()
         return {
-            "success": True,
-            "stdout": output_buffer.getvalue() or "(Code executed with no output)",
-            "execution_time_ms": elapsed
+            "title": data.get("title"),
+            "extract": data.get("extract"),
+            "url": data.get("content_urls", {}).get("desktop", {}).get("page"),
         }
-    except Exception as e:
-        elapsed = round((time.time() - start_time) * 1000, 2)
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "execution_time_ms": elapsed
-        }
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
-@app.get("/api/memory")
-async def get_agent_memory():
-    return {"memory": AGENT_MEMORY}
 
-@app.post("/api/memory")
-async def update_agent_memory(req: MemoryUpdateRequest):
-    AGENT_MEMORY[req.key] = req.value
-    return {"success": True, "memory": AGENT_MEMORY}
+@app.get("/api/fetch")
+async def fetch_url(url: str):
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="url must be http(s)")
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": "GBackgroundAI/1.0"})
+            content_type = r.headers.get("content-type", "")
+            if "text" in content_type or "json" in content_type or "xml" in content_type:
+                body = r.text
+            else:
+                body = f"[Binary content, {len(r.content)} bytes, type={content_type}]"
+            return {
+                "status": r.status_code,
+                "content_type": content_type,
+                "final_url": str(r.url),
+                "body": body[:200_000],
+            }
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
-@app.delete("/api/memory")
-async def clear_agent_memory():
-    global AGENT_MEMORY
-    AGENT_MEMORY = {}
-    return {"success": True, "message": "Memory reset"}
+
+@app.post("/api/validate-key")
+async def validate_key(body: ValidateKeyBody):
+    key = (body.api_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="api_key required")
+    if not key.startswith("nvapi-") or len(key) < 20:
+        raise HTTPException(status_code=400, detail="Key must start with 'nvapi-' and be at least 20 chars")
+    try:
+        async with httpx.AsyncClient(timeout=7) as client:
+            r = await client.get(
+                f"{NVIDIA_BASE}/models",
+                headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+            )
+            return {"ok": r.ok, "status": r.status_code}
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/api/nvidia/models")
+async def nvidia_models(api_key: str):
+    if not api_key.strip():
+        raise HTTPException(status_code=400, detail="api_key required")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{NVIDIA_BASE}/models",
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting GBackgroundAI FastAPI Engine on port 8000...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=True)
