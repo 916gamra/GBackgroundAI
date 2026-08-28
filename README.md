@@ -1,10 +1,11 @@
-# ⚡ GBackgroundAI — Beast v13
+# ⚡ GBackgroundAI — Beast v15
 > **نظام الذكاء الاصطناعي متعدد النماذج المتقدم والوكيل المستقل (Autonomous Multi-Model AI Agent & One UI Workspace)**
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-18.3-61dafb.svg?style=flat-square&logo=react)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg?style=flat-square&logo=react)](https://react.dev/)
+[![Tests](https://img.shields.io/badge/logic%20tests-69%20assertions-brightgreen.svg?style=flat-square)](#-التشغيل-والاختبارات-setup--tests)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4.0-38bdf8.svg?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Python_Sandbox-009688.svg?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Optional_CORS_Proxy-009688.svg?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Capacitor](https://img.shields.io/badge/Capacitor-Mobile_Ready-119EFF.svg?style=flat-square&logo=capacitor)](https://capacitorjs.com/)
 [![UI Style](https://img.shields.io/badge/Design-Samsung_One_UI_6%2F7-0057ff.svg?style=flat-square)](#-samsung-one-ui-67-mobile-design-system)
 [![Security](https://img.shields.io/badge/Security-Hardened_Sandboxes-emerald.svg?style=flat-square)](#-security--sandboxing-architecture)
@@ -24,17 +25,70 @@
 9. [دليل المطور للتوسيع والتطوير (Developer Extension Guide)](#-دليل-المطور-للتوسيع-والتطوير-developer-extension-guide)
 10. [التثبيت والتشغيل المحلي (Setup & Installation)](#-التثبيت-والتشغيل-المحلي-setup--installation)
 11. [ملاحظات وتوصيات للمبرمجين (Developer Notes & Best Practices)](#-ملاحظات-وتوصيات-للمبرمجين-developer-notes--best-practices)
+12. [ما الجديد في Beast v15 (Changelog + Known limits)](#-ما-الجديد-في-beast-v15-changelog)
+13. [التشغيل والاختبارات (Setup & Tests)](#-التشغيل-والاختبارات-setup--tests)
 
 ---
 
 ## 🌟 نظرة عامة على المشروع (Project Overview)
 
-تطبيق **GBackgroundAI (Beast v13)** هو منصة عمل متكاملة للذكاء الاصطناعي تجمع بين:
+تطبيق **GBackgroundAI (Beast v15)** هو منصة عمل متكاملة للذكاء الاصطناعي تجمع بين:
 * **نظام الوكيل المستقل الذكي (Autonomous Agent Mode):** القادر على التفكير، تخطيط الخطوات، وتشغيل أكثر من 20 أداة برمجية وتنفيذية ذاتياً.
 * **محرك ألعاب وتحريك رمزي للأفاتار (Procedural 60fps Avatar Engine):** يعبر بصرياً عن حالات التفكير، التوليد، التحليل، الأخطاء، والنجاح مع تتبع حركة المؤشر والعينين والتنفس الإجرائي.
 * **واجهة مستخدم محسنة لمعايير Samsung One UI:** تضمن سهولة الاستخدام بيد واحدة (One-handed ergonomics) مع أوراق سحب سفلية (Bottom Sheets) وقوائم انسيابية.
-* **بيئات تنفيذ معزولة (Multi-Tier Execution Sandboxes):** تشغيل كود Python عبر خادم FastAPI محمي بنظام القوائم البيضاء، وتشغيل كود JavaScript عبر Web Workers معزولة عن المتصفح.
+* **بيئات تنفيذ معزولة (Multi-Tier Execution Sandboxes):** تشغيل Python فعلياً داخل المتصفح عبر **Pyodide** (يُحمَّل من CDN عند أول استخدام فقط)، وتشغيل JavaScript داخل **Web Worker** معزول عن الـ DOM. أمّا خادم **FastAPI** في `backend/` فهو **اختياري** ويعمل كـ CORS proxy للطلبات التي يرفضها المتصفح — لا ينفّذ بايثون.
 * **بيئة معاينة برمجية حية (Live Code Sandbox & Artifacts Manager):** لعرض وتجربة كود HTML/CSS/JS وتصدير المشاريع بضغطة زر.
+
+---
+
+## 🆕 ما الجديد في Beast v15 (Changelog)
+
+هذه النسخة ركّزت على **إصلاح ما كان ظاهراً في الواجهة لكنه غير موصول بالمنطق**، بدل إضافة مزايا جديدة للعرض:
+
+| # | الإصلاح | الملف | الأثر |
+| :-- | :--- | :--- | :--- |
+| 1 | كان يُرسل حجم نافذة السياق (`mk`) كحدّ للـ `max_tokens` (مثلاً 2,097,152 لـ Gemini Pro) فترفض معظم المزودين الطلب برسالة 400. أُضيفت حدود إخراج حقيقية لكل نموذج + دالة `resolveMaxOutputTokens` | `aiService.ts`, `App.tsx` | الطلبات تعمل فعلياً على Groq/NVIDIA/Gemini |
+| 2 | إعداد «عدد رسائل السياق» `ctx` كان يُعرض ولا يُقرأ أبداً | `aiService.ts` (`buildCtx`) | التحكم بالسياق صار حقيقياً |
+| 3 | «تلخيص تلقائي» (autoSum/sumThreshold/sumKeep) كان مفتاحاً بدون وظيفة | `summarizeHistory.ts` | يلخّص القديم ويحقنه كسياق بدل فقدان أول المحادثة |
+| 4 | مفتاح Web Search في شريط الإدخال كان زينة | `App.tsx` | يبحث فعلياً ويحقن النتائج (مع/بدون Agent) |
+| 5 | أدوات Agent الوهمية (~25 أداة تعيد JSON ملفّق) كانت معلنة كلها للنموذج | `toolPolicy.ts`, `agentTools.ts` | من 60 أداة إلى ~25 افتراضياً، والمحاكاة تُوسم `[SIMULATED DEMO TOOL]` |
+| 6 | الكود المصدري للتطبيق كان يُضمَّن كاملاً في الحزمة عبر `import.meta.glob('?raw')` | `projectMemory.ts` | الحزمة الأولى من 2.9 MB إلى 320 KB، ولم يعد المصدر مكشوفاً للمستخدم |
+| 7 | React.lazy للصفحات الثقيلة + `chart.js` عند الطلب + `highlight.js/lib/common` | `vite.config.ts`, `App.tsx` | تحميل أولي أخف بكثير على الهاتف |
+| 8 | أخطاء المزودين كانت `[HTTP 401] {"json…"} ` خامّة، والردود غير المتدفقة تُنتج فقاعة فارغة | `streamEngine.ts` | رسائل مفهومة + دعم بوابات Ollama/proxy غير المتدفقة |
+| 9 | بحث داخل المحادثة من الـ Header (زر البحث كان لا يفعل شيئاً) + شريط فارغ للمحادثة الجديدة | `Header.tsx`, `ChatPage.tsx` | تصفية الرسائل + اقتراحات البداية |
+| 10 | GSoulEngine يكتب فقط عند استخدام `remember`، و`clearWorking()` كان يمسح `sessionStorage` بالكامل | `GSoulEngine.ts`, `App.tsx` | ذاكرة حقيقية + استرجاع في كل طلب، بدون إتلاف بيانات أخرى |
+| 11 | مخطط `make_chart` كان يُعرض للنموذج فقط ولا يظهر للمستخدم | `App.tsx`, `AgentBubble.tsx` | الرسم يظهر في الفقاعة ويمكن تنزيله PNG |
+| 12 | تعطل التطبيق عند حذف آخر محادثة / إرسال من شاشة الترحيب (محادثتان فارغتان) | `App.tsx` | حواجز أمان ومعالجة صحيحة |
+| 13 | `select-none` عام كان يمنع تحديد/نسخ أي نص في المحادثة | `index.html`, `index.css` | النسخ والضغط المطوّل على Android يعملان |
+| 14 | امتلاء التخزين كان يفشل بصمت في الـ console | `safeStorage.ts`, `App.tsx` | تقليم تلقائي للأقدم + تنبيه واضح للمستخدم |
+| 15 | محوّل Gemini كان يتجاهل `baseUrl` المخصص | `GoogleGeminiAdapter.ts` | البروكسيات/النسخ الأخرى من الـ endpoint تعمل |
+| 16 | طلبات الأدوات بدون مهلة تُعلّق حلقة الـ Agent للأبد، و«إيقاف» لم يكن يلغي الأدوات | `agentTools.ts`, `AgentOrchestrator.ts` | مهلة 20 ثانية + توقف فوري عند Stop |
+| 17 | مواعيد غير مستخدمة: `express`, `dotenv`, `@google/genai`, `motion`, `lz-string` + 6 ملفات ميتة (~950 سطر) | `package.json`, `src/` | اعتماديات أقل وواجهة أنظف |
+| 18 | اختبارات منطق + اختبار تصبير حقيقي للشجرة (`npm run smoke`) تغطي كل ما سبق | `tests/logic.test.ts`, `tests/smoke-render.tsx` | `npm test` / `npm run smoke` |
+
+### حدود معروفة (اقرأها قبل الاستخدام)
+* **الأدوات الموسومة `SIMULATED`** (`modbus_titan`, `device_hardware_overlord`, `termux_root_executor`, `voice_cloner`, `agent_swarm`, `ben10_consciousness_core`…) تُعيد بيانات تجريبية جاهزة **ولا تتصل بأي جهاز أو PLC**. هي معطّلة افتراضياً، وتُوسم نتائجها تلقائياً حتى لا يقدّمها النموذج كحقيقة.
+* **`math_eval` يستخدم مُقيِّماً regex + `Function()`**: المُدخلات مقيّدة بحروف الأرقام والعمليات، لكنه يظل تقييماً لديناميكياً — لا تُفعّل أدوات مخصصة بثقة عمياء.
+* **JS/Python Sandbox**: الـ Worker معزول عن الـ DOM لكنه **نفس الأصل** (same-origin) لذلك يمكنه تنفيذ `fetch`؛ وعزل معاينة HTML يعتمد على `iframe sandbox`. للحماية القصوى أضف CSP على مستوى الاستضافة.
+* **المفاتيح تُخزَّن في `localStorage`** على الجهاز — مناسب للاستخدام الشخصي/التجريبي، وغير مناسب لمفاتيح إنتاجية أو أجهزة مشتركة. استخدم `VITE_*` للتطوير فقط (تُدمج في الحزمة).
+* **`allowMixedContent` + `cleartext` في Capacitor** ضروريان للتواصل مع Termux/PLC عبر `http://` داخل الشبكة المحلية، ويجب ألا يُفعّلا في بناء يعتمد على شبكة عامة.
+* **البحث في الويب** يعتمد على مفاتيح خارجية (Serper) أو على `r.jina.ai` كوسيط عام — لا تعتمد عليه لمحتوى حساس.
+
+---
+
+## 🧪 التشغيل والاختبارات (Setup & Tests)
+
+```bash
+npm install
+npm run dev          # Vite على المنفذ 3000 (0.0.0.0 للمعاينة على الهاتف)
+npm run lint         # tsc --noEmit
+npm run lint:strict  # + noUnusedLocals/noUnusedParameters (بدون أخطاء حالياً)
+npm test             # اختبارات المنطق + شكل الطلب الخارج (69 تأكيداً) بدون متصفح
+npm run build        # حزمة الإنتاج
+
+# اختياري: وسيط CORS
+cd backend && pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
 ---
 
@@ -69,9 +123,9 @@
 
 ```text
 GBackgroundAI/
-├── backend/                        # بيئة خادم Python المعزولة
-│   ├── main.py                     # خادم FastAPI، معالجة الذاكرة وتنفيذ Python الآمن
-│   └── requirements.txt            # اعتمادات بايثون (fastapi, uvicorn, pydantic)
+├── backend/                        # ⚙️ وسيط CORS اختياري (اختياري تماماً للتشغيل العادي)
+│   ├── main.py                     # خادم FastAPI لتجاوز CORS: بحث الويب، ويكيبيديا، فحص المفاتيح
+│   └── requirements.txt            # اعتمادات بايثون (fastapi, uvicorn, httpx, pydantic)
 │
 ├── src/
 │   ├── main.tsx                    # نقطة الدخول الرئيسية لـ React 18
@@ -99,8 +153,7 @@ GBackgroundAI/
 │   │   │   ├── AgentBubble.tsx     # فقاعة رد المساعد الذكي مع استعراض الكود والماركداون
 │   │   │   ├── UserBubble.tsx      # فقاعة رسائل المستخدم مع المرفقات والتعديل
 │   │   │   ├── ToolBubble.tsx      # فقاعة استدعاء أدوات الوكيل ونتائجها
-│   │   │   ├── ArtifactsPanel.tsx  # لوحة إدارة وتصفح الملفات والـ Artifacts المولدة
-│   │   │   └── ApiKeyValidatorInput.tsx # مدخل فحص المفاتيح والتحقق اللحظي
+│   │   │   └── ArtifactsPanel.tsx  # لوحة إدارة وتصفح الملفات والـ Artifacts المولدة
 │   │   │
 │   │   ├── Modals/                 # النوافذ المنبثقة وأوراق One UI السفلية
 │   │   │   ├── ModelPickerModal.tsx    # نافذة اختيار وتبديل النماذج الذكية
@@ -115,10 +168,11 @@ GBackgroundAI/
 │   │       └── ToolsSettings.tsx   # صفحة تفعيل وإدارة وبناء الأدوات المخصصة
 │   │
 │   ├── services/                   # ⚙️ خدمات الذكاء الاصطناعي والشبكة
-│   │   ├── AIRouterEngine.ts       # محرك التوجيه التلقائي للمهام وتوزيع النماذج
-│   │   ├── agentTools.ts           # محرك تنفيذ أدوات الوكيل (Web, Code, SQL, Data)
-│   │   ├── aiService.ts            # خدمة الاتصال المباشر وتنسيق الطلبات مع الموديلات
-│   │   ├── apiValidation.ts        # خدمة فحص واختبار صحة مفاتيح الـ API
+│   │   ├── toolPolicy.ts           # 🛡️ سياسة ثقة الأدوات (حقيقية/محاكاة) وحظر الأدوات الوهمية افتراضياً
+│   │   ├── summarizeHistory.ts     # تلخيص المحادثة التدريجي (Auto-summarize الحقيقي)
+│   │   ├── safeStorage.ts          # كتابة آمنة على localStorage مع إعادة محاولة عند امتلاء الحصة
+│   │   ├── agentTools.ts           # محرك تنفيذ أدوات الوكيل (Web, Code, Data, PLC…)
+│   │   ├── aiService.ts            # خدمة الاتصال المباشر وتنسيق الطلبات مع الموديلات (ودوال resolveMaxOutputTokens/buildCtx)
 │   │   ├── speechUtils.ts          # أدوات التعرف على الصوت والنطق الآلي (STT / TTS)
 │   │   ├── streamEngine.ts         # محرك استقبال ودفق التوكن في الوقت الحقيقي
 │   │   ├── providers/              # محولات بروتوكولات المزودين المتعددة
@@ -146,7 +200,7 @@ flowchart TD
     User([المستخدم / واجهة One UI]) --> InputArea[InputArea / الأوامر والصوت]
     InputArea --> AppController[App.tsx / المنسق العام]
     
-    AppController --> Router{AIRouterEngine}
+    AppController --> Router{detectTask + ROUTE_MAP\n في aiService}
     Router -->|توجيه تلقائي| BestModel[اختيار الموديل الأنسب]
     
     AppController --> AgentOrchestrator{Agent Mode مفعّل؟}
@@ -155,7 +209,8 @@ flowchart TD
     ToolLoop --> AgentTools[agentTools.ts / استدعاء الأدوات]
     
     AgentTools --> WebWorkerSandbox[Web Worker Sandbox / JavaScript مخصص]
-    AgentTools --> FastAPIBackend[FastAPI Backend / Python Exec الآمن]
+    AgentTools --> PyodideSandbox[Pyodide / تنفيذ Python داخل المتصفح]
+    AgentTools -.اختياري.-> CORSProxy[FastAPI CORS Proxy في backend/]
     AgentTools --> WebSearch[Web Search API / DuckDuckGo / Tavily]
     AgentTools --> DataAnalyst[Data & Chart Engine]
     
@@ -215,10 +270,10 @@ flowchart TD
 | اسم الأداة (`Tool Name`) | الوصف والوظيفة | بيئة التنفيذ |
 | :--- | :--- | :--- |
 | `web_search` | البحث اللحظي في الإنترنت واستخراج أحدث المعلومات والمصادر | DuckDuckGo / Serp API |
-| `run_python` | تنفيذ أكواد بايثون الحسابية، الخوارزميات وتحليل البيانات | FastAPI Backend Sandbox |
-| `run_javascript` | تشغيل دوال وحسابات جافاسكريبت المتقدمة | Web Worker Sandbox |
-| `data_analyst` | تحليل ملفات CSV/JSON وإنشاء رسوم بيانية تفاعلية | Recharts / Client Engine |
-| `pdf_analyzer` | استخراج وتحليل ونمذجة محتويات ملفات PDF | PDF.js Worker |
+| `run_python` | تنفيذ أكواد بايثون الحسابية، الخوارزميات وتحليل البيانات | Pyodide (WebAssembly) داخل المتصفح |
+| `exec_js` | تشغيل دوال وحسابات جافاسكريبت المتقدمة | Web Worker Sandbox |
+| `data_analyst` | تحليل ملفات CSV/JSON وإنشاء رسوم بيانية تفاعلية | Pyodide (pandas) + Chart.js |
+| `pdf_analyzer` | استخراج نصوص الملفات والبحث داخلها | Pyodide (pypdf) |
 | `fetch_webpage` | جلب محتوى صفحات الويب وتحويلها إلى ماركداون نظيف | Web Scraper / Proxy |
 | `git_repo_explorer` | فحص مستودعات GitHub واستعراض الملفات والأكواد | GitHub REST API |
 | `trigger_n8n` | تشغيل مسارات الأتمتة (Workflows) عبر N8N Webhooks | Webhook Integration |

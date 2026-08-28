@@ -1,4 +1,4 @@
-# 📘 GBackgroundAI — Developer & Architecture Guide (Beast v14)
+# 📘 GBackgroundAI — Developer & Architecture Guide (Beast v15)
 > **دليل المطورين والمهندسين الشامل لتطبيق GBackgroundAI — نواة الوحش v14**
 > *Capricorn ♑ Mountain Builder Engine | Dexie.js GSoul Persistence | Modbus PLC & Termux Hardware Bridge | Samsung One UI 6/7 Optimization*
 
@@ -222,11 +222,68 @@ npm install
 npm run dev
 
 # 3. التحقق من سلامة الأكواد والأنواع
-npm run lint
+npm run lint           # tsc --noEmit
+npm run lint:strict    # + noUnusedLocals / noUnusedParameters
 
-# 4. بناء المشروع للإنتاج
+# 4. اختبارات المنطق (بدون متصفح — esbuild + node)
+npm test
+
+# 5. بناء المشروع للإنتاج
 npm run build
 ```
 
 ---
-*تم إنشاء هذا التوثيق لخدمة مهندسي ومطوري **GBackgroundAI — Beast v14**.*
+
+## 🛡️ 9. سياسة ثقة الأدوات (Tool Trust Policy)
+
+كل أداة Agent يجب أن تنتمي لأحد ثلاث فئات في `src/services/toolPolicy.ts`:
+
+| الفئة | المعنى | الإعلان للنموذج افتراضياً |
+| :-- | :-- | :-- |
+| `REAL` | تنفيذ حقيقي (شبكة، Pyodide، Web Crypto، Canvas…) | ✅ مُعلَن |
+| `HYBRID` | واجهات جهاز حقيقية مع قيم بديلة مُقدَّرة | ✅ مُعلَن + وسم `PARTIAL HARDWARE ACCESS` |
+| `SIMULATED` | مخرجات تجريبية جاهزة (mocks) | ❌ غير مُعلَنة إلا بتفعيل يدوي من الإعدادات |
+
+قواعد إلزامية عند إضافة أداة جديدة:
+
+1. أضف التنفيذ الحقيقي في `agentTools.ts`، ثم السكيما في `AGENT_TOOLS`، ثم بطاقة الشرح في `BUILTIN_TOOL_CATALOG`، والحالة في `TOOL_META`.
+2. **إن لم يكن هناك تنفيذ حقيقي**: لا تضف الأداة إلى `AGENT_TOOLS` إطلاقاً. الدالة تُوضع خلف `executeAgentToolUniversal` وتُسمّى في `SIMULATED_TOOLS` حتى تُوسم نتائجها بـ `SIMULATED DEMO TOOL` ولا يقدّمها النموذج كحقيقة.
+3. المنطق المركزي موجود في `App.tsx → executeAgentTool` عبر `annotateToolResult(fn, result)` — لا تكرّره داخل كل أداة.
+4. الأدوات التي تتطلب مفتاحاً تُعلَّم في `KEY_GATED_TOOLS`؛ لن تُرسل للنموذج أصلاً بدون المفتاح.
+5. `getActiveAgentTools(enabledMap, customTools, settings)` تتلقى `settings` لهذا السبب — مرّرها دائماً.
+
+## 🔌 10. مصفوفة الإعدادات (لا تُضف مفتاحاً بلا مستهلك)
+
+كل مفتاح في `AppSettings` يجب أن يكون مقروءاً في مكان تنفيذي، وليس في الـ UI فقط (هذا كان سبب أغلب أخطاء v13/v14):
+
+| المفتاح | المستهلك الفعلي |
+| :-- | :-- |
+| `mod`, `tmp`, `maxTok` | `App.handleSend` → `resolveMaxOutputTokens` → `streamEngine` |
+| `ctx` | `buildCtx` (عدد وحدات التاريخ المحمّلة) |
+| `sys`, `summary` | `buildCtx` (رسائل system) |
+| `autoSum`, `sumThreshold`, `sumKeep` | `App.maybeSummarize` → `summarizeHistory.generateSummary` |
+| `agent`, `enabledTools`, `customTools` | `getActiveAgentTools` + `AgentOrchestrator` |
+| `webSearch`, `serper` | `App.handleSend` (حقن نتائج البحث) + أداة `web_search` |
+| `tts`, `ttsVoice`, `ttsSpeed` | `App.finalizeReply` → `speechUtils.speakText(text, _, _, opts)` |
+| `taskRoute` | `detectTask` + `AgentOrchestrator.classifyTask` |
+| `agentMem` | `buildCtx` + أداتا `remember`/`recall` |
+
+اختبار سريع قبل الدمج: `npm run lint:strict` (لا ينبغي أن يبقى أي مفتاح/prop غير مستهلك).
+
+## 🧠 11. ذاكرة GSoul: كيف تُستخدم فعلياً
+
+* `App.finalizeReply` تستدعي `recordInteraction()` بعد كل رد (conversation / tool_call / error) و`learnFromUserMessage()` لاستخلاص التفضيلات تلقائياً.
+* `App.handleSend` تستدعي `buildMemoryContext(text)` وتحقن النتيجة كرسالة system عبر `buildCtx(..., { extraSystem })`.
+* `remember` / `recall` في الأدوات تكتب/تقرأ من `semantic`.
+* **لا تغيّر اسم قاعدة البيانات** `GSoul_Beast_v14`: إعادة التسمية تعني فقدان بيانات المستخدمين؛ التوسعة تكون عبر `this.version(2).stores({...})`.
+* `clearWorking()` تمسح مفاتيح `gsoul_working_*` فقط من `sessionStorage` — لا تستبدلها بـ `sessionStorage.clear()`.
+
+## 📦 12. الحزمة والتحميل (Bundle budget)
+
+* `App.tsx` يحمّل `SettingsPage` و`DeveloperDocsPage` بـ `React.lazy`، و`chart.js` يُستورد ديناميكياً داخل `makeChart`، و`jszip`/`file-saver` عند التصدير فقط.
+* `highlight.js` مستورد من `highlight.js/lib/common` وليس الحزمة الكاملة.
+* **ممنوع** استخدام `import.meta.glob(..., { query: '?raw', eager: true })` على `src/` — فعل ذلك في v14 كان يضمنّ الكود المصدري كاملاً داخل الحزمة (تضخيم + تسريب للمصدر). ملفات مساحة العمل تُزامَن وقت التشغيل عبر `projectMemory.syncWorkspace()`.
+* `vite.config.ts` يوزّع الـ vendors في chunks ثابتة (`vendor-*`) للاستفادة من الكاش.
+
+---
+*تم إنشاء هذا التوثيق لخدمة مهندسي ومطوري **GBackgroundAI — Beast v15**.*
