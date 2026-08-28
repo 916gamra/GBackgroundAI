@@ -1,6 +1,5 @@
-import { EXPRESSIONS_MAP, EXPRESSIONS } from './expressions';
-import { STATES_MAP, STATES } from './states';
-import { BotExpression, BotState } from './types';
+import { EXPRESSIONS } from './expressions';
+import { STATES } from './states';
 
 export type AgentBehaviorState =
   | 'idle'

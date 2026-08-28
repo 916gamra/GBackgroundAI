@@ -3,7 +3,7 @@ import { ChevronDown, Check, Zap, Globe, Terminal, Code, BarChart3, Calculator, 
 import { UserBubble } from './UserBubble';
 import { AgentBubble } from './AgentBubble';
 import { ToolBubble } from './ToolBubble';
-import { ChatMessage, AgentStepEvent, AppSettings, Provider } from '../../types';
+import { ChatMessage, AgentStepEvent } from '../../types';
 
 interface ChatPageProps {
   history: ChatMessage[];
@@ -21,24 +21,9 @@ interface ChatPageProps {
   onEditResend: (index: number, newText: string) => void;
   onDeleteMessage: (index: number) => void;
   onSpeak: (text: string) => void;
-  searchQuery: string;
+  /** Live transcript filter driven by the header search bar. */
+  searchQuery?: string;
   isPreviewOpen: boolean;
-
-  // InputBar props
-  settings: AppSettings;
-  onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
-  activeProvider: Provider | undefined;
-  onOpenModelPicker: () => void;
-  onOpenProviderPicker: () => void;
-  onOpenProjectModal: () => void;
-  onOpenSnippetsModal: () => void;
-  onOpenSettingsModal: () => void;
-  onTogglePreview: () => void;
-  onSend: (text: string, visionFile?: { name: string; url: string }) => void;
-  onStop: () => void;
-  isBusy: boolean;
-  totalSessionTokens: number;
-  projectCount: number;
 }
 
 export const ChatPage: React.FC<ChatPageProps> = ({
@@ -57,22 +42,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   onEditResend,
   onDeleteMessage,
   onSpeak,
-  searchQuery,
-  isPreviewOpen,
-  settings,
-  onUpdateSettings,
-  activeProvider,
-  onOpenModelPicker,
-  onOpenProviderPicker,
-  onOpenProjectModal,
-  onOpenSnippetsModal,
-  onOpenSettingsModal,
-  onTogglePreview,
-  onSend,
-  onStop,
-  isBusy,
-  totalSessionTokens,
-  projectCount
+  searchQuery = '',
+  isPreviewOpen
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -109,6 +80,18 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     scrollToBottom(true);
   }, [history, streamingContent, streamingThinking, agentSteps.length, isStreaming, isAgentRunning, scrollToBottom]);
 
+  // ── Header search: filter the transcript without touching the stored history ──
+  const query = (searchQuery || '').trim().toLowerCase();
+  const indexed = history.map((msg, index) => ({ msg, index }));
+  const visible = query
+    ? indexed.filter(
+        ({ msg }) =>
+          (typeof msg.content === 'string' && msg.content.toLowerCase().includes(query)) ||
+          (msg.role === 'assistant' && (msg.think || '').toLowerCase().includes(query))
+      )
+    : indexed;
+  const matchCount = query ? visible.length : 0;
+
   const getToolIcon = (fn: string) => {
     switch (fn) {
       case 'web_search': return <Globe size={13} className="text-emerald-400" />;
@@ -135,8 +118,46 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           isPreviewOpen ? 'lg:mr-[48%] xl:mr-[50%]' : ''
         }`}
       >
+        {/* Search results banner */}
+        {query && (
+          <div className="sticky top-0 z-10 self-center w-full max-w-md rounded-xl bg-[#121215]/95 border border-[#27272a] backdrop-blur px-3 py-1.5 text-[11px] font-mono text-[#a1a1aa] flex items-center justify-between animate-fadeIn">
+            <span>
+              {matchCount > 0
+                ? `${matchCount} message${matchCount === 1 ? '' : 's'} matching “${searchQuery}”`
+                : `No messages match “${searchQuery}”`}
+            </span>
+            <span className="text-[#52525b]">Esc = exit search</span>
+          </div>
+        )}
+
+        {/* Empty state: a brand new chat used to be a blank wall */}
+        {!query && history.length === 0 && !isStreaming && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 py-16 text-center animate-fadeIn">
+            <div className="text-4xl">💬</div>
+            <div>
+              <h3 className="text-base font-bold text-white">Start this conversation</h3>
+              <p className="text-xs text-[#71717a] mt-1 max-w-sm">
+                Ask anything, or start from a template — the agent can run Python, search the web and build files.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 max-w-lg">
+              {['Explain this error and propose a fix', 'Write a Python script to analyse a CSV', 'Draft a README for my project', 'Search the web for the latest release notes'].map(
+                prompt => (
+                  <button
+                    key={prompt}
+                    onClick={() => onQuickPrompt(prompt)}
+                    className="px-3 py-1.5 rounded-xl bg-[#121215] border border-[#27272a] hover:border-[var(--accent)] hover:text-white text-[#a1a1aa] text-xs transition-all cursor-pointer"
+                  >
+                    {prompt}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Render Chat History */}
-        {history.map((msg, index) => {
+        {visible.map(({ msg, index }) => {
           if (msg.role === 'system') return null;
 
           if (msg.role === 'tool') {

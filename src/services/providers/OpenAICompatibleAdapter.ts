@@ -155,49 +155,6 @@ export class OpenAICompatibleAdapter implements AIProviderAdapter {
       .join(' ');
   }
 
-  private getDefaultModels(): ModelInfo[] {
-    return [
-      {
-        id: 'nvidia/llama-3.1-nemotron-70b-instruct',
-        name: 'Llama 3.1 Nemotron 70B Instruct',
-        providerId: this.id,
-        contextWindow: 131072,
-        supportsVision: false,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: true,
-        category: 'think',
-        source: 'remote',
-        description: 'Default high-performance reasoning model'
-      },
-      {
-        id: 'deepseek-ai/deepseek-r1',
-        name: 'DeepSeek R1',
-        providerId: this.id,
-        contextWindow: 64000,
-        supportsVision: false,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: true,
-        category: 'think',
-        source: 'remote',
-        description: 'Advanced reasoning model'
-      },
-      {
-        id: 'meta/llama-3.3-70b-instruct',
-        name: 'Llama 3.3 70B Instruct',
-        providerId: this.id,
-        contextWindow: 128000,
-        supportsVision: false,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: false,
-        category: 'general',
-        source: 'remote',
-        description: 'State of the art open model'
-      }
-    ];
-  }
 
   streamChat(request: ChatRequestPayload): AsyncGenerator<StreamEvent, void, unknown> {
     // Inject the exact endpoint correctly. If they provide baseUrl, append /chat/completions

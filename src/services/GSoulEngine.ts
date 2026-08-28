@@ -44,6 +44,10 @@ export class GSoulDatabase extends Dexie {
   working!: Table<WorkingMemoryItem, string>;
 
   constructor() {
+    // NOTE: the physical IndexedDB name intentionally stays `GSoul_Beast_v14`.
+    // Renaming it would orphan every existing user's memory tables (Dexie opens a
+    // brand-new empty DB); schema changes must go through version(2).stores(...)
+    // migrations on this same name instead.
     super('GSoul_Beast_v14');
     this.version(1).stores({
       soul: 'key, updatedAt, version',
@@ -106,7 +110,7 @@ export class GSoulEngine {
       if (!existing) {
         const defaultIdentity = {
           name: 'G',
-          version: 'Beast v14',
+          version: 'Beast v15',
           archetype: 'Capricorn ♑ — Discipline, Mountain Builder, Patient',
           languageMode: 'Darija Maghribia & High-Precision Technical English',
           systemPhilosophy: 'Build resilient systems step-by-step. Never hallucinate. Real tools, exact registers, deep persistence.',
@@ -185,11 +189,11 @@ export class GSoulEngine {
 
   public async getRecentEpisodes(sessionId?: string, limit: number = 20): Promise<EpisodicMemory[]> {
     try {
-      let query = this.db.episodic.orderBy('timestamp').reverse();
       if (sessionId) {
-        return await this.db.episodic.where('sessionId').equals(sessionId).reverse().limit(limit).toArray();
+        const rows = await this.db.episodic.where('sessionId').equals(sessionId).toArray();
+        return rows.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
       }
-      return await query.limit(limit).toArray();
+      return await this.db.episodic.orderBy('timestamp').reverse().limit(limit).toArray();
     } catch {
       if (sessionId) {
         const list = JSON.parse(localStorage.getItem(`gsoul_episodes_${sessionId}`) || '[]');
@@ -325,7 +329,113 @@ export class GSoulEngine {
     try {
       await this.db.working.clear();
     } catch {}
-    sessionStorage.clear();
+    // Only drop our own mirrored keys - a blanket sessionStorage.clear() here
+    // used to wipe unrelated keys (e.g. the chat draft restore) as a side effect.
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('gsoul_working_')) sessionStorage.removeItem(key);
+      }
+    } catch {}
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     4b. APP-FACING HELPERS (the wiring the UI uses)
+     ───────────────────────────────────────────────────────────── */
+
+  /**
+   * Log one turn of the conversation. Called from App.tsx after every reply so
+   * the "GSoul persistence" claim in the README is actually backed by writes.
+   */
+  public async recordInteraction(entry: {
+    sessionId: string;
+    prompt: string;
+    reply: string;
+    model?: string;
+    agent?: boolean;
+    error?: boolean;
+    toolsUsed?: string[];
+  }): Promise<void> {
+    const summary = `${entry.prompt.slice(0, 220)}${entry.prompt.length > 220 ? '…' : ''} → ${
+      entry.reply.slice(0, 320)}${entry.reply.length > 320 ? '…' : ''}`;
+    try {
+      await this.addEpisode({
+        sessionId: entry.sessionId,
+        type: entry.error ? 'error' : entry.agent ? 'tool_call' : 'conversation',
+        summary,
+        tags: [entry.model || 'unknown', ...(entry.agent ? ['agent'] : []), ...(entry.toolsUsed || [])],
+        metadata: {
+          model: entry.model,
+          agent: !!entry.agent,
+          promptChars: entry.prompt.length,
+          replyChars: entry.reply.length,
+          toolsUsed: entry.toolsUsed || []
+        }
+      });
+    } catch (e) {
+      console.warn('[GSoul] recordInteraction failed:', e);
+    }
+  }
+
+  /** Compact "what I remember about this user" block injected into the system prompt. */
+  public async buildMemoryContext(query: string, budgetChars = 2200): Promise<string> {
+    try {
+      const [facts, episodes] = await Promise.all([
+        this.searchSemantic(query, 6),
+        this.getRecentEpisodes(undefined, 6)
+      ]);
+      if (!facts.length && !episodes.length) return '';
+
+      const parts: string[] = [];
+      if (facts.length) {
+        parts.push(
+          'Known facts (GSoul semantic memory):\n' +
+            facts.map(f => `- [${f.category}] ${f.title}: ${f.content}`).join('\n')
+        );
+      }
+      if (episodes.length) {
+        parts.push(
+          'Recent activity (GSoul episodic memory):\n' +
+            episodes
+              .map(e => `- ${new Date(e.timestamp).toISOString().slice(0, 16)} [${e.type}] ${e.summary}`)
+              .join('\n')
+        );
+      }
+      let block = parts.join('\n\n');
+      if (block.length > budgetChars) block = block.slice(0, budgetChars) + '\n…[memory truncated]';
+      return `🧠 GSoul LONG-TERM MEMORY (recall-only context, do not quote verbatim):\n${block}`;
+    } catch {
+      return '';
+    }
+  }
+
+  /** Auto-extract a durable preference/fact from a user message ("I use ...", "always ..."). */
+  public async learnFromUserMessage(text: string): Promise<string | null> {
+    const t = (text || '').trim();
+    if (t.length < 12 || t.length > 600) return null;
+    const patterns: Array<[RegExp, SemanticFact['category']]> = [
+      [/\b(?:i use|i work with|i prefer|my (?:stack|project|team|editor|framework) is)\b[:\s]*(.+)/i, 'tech_stack'],
+      [/\b(?:remember that|always|never|my name is|call me|i am a|i'm a)\b[:\s]*(.+)/i, 'preference']
+    ];
+    for (const [re, category] of patterns) {
+      const m = t.match(re);
+      if (m?.[1]) {
+        const content = m[1].trim().replace(/\s+/g, ' ').slice(0, 240);
+        if (content.length < 4) continue;
+        const keywords = Array.from(
+          new Set(content.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 3).slice(0, 8))
+        );
+        await this.storeFact({
+          category,
+          title: content.slice(0, 60),
+          content,
+          keywords,
+          confidence: 0.6
+        });
+        return content;
+      }
+    }
+    return null;
   }
 
   /* ─────────────────────────────────────────────────────────────

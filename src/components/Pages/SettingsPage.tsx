@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   Server,
@@ -12,30 +12,23 @@ import {
   Trash2,
   Check,
   RotateCcw,
-  Search,
   ExternalLink,
   Eye,
   EyeOff,
   Activity,
-  Zap,
   Brain,
   Download,
   Upload,
   RefreshCw,
-  Copy,
-  Terminal,
   ShieldCheck,
-  HelpCircle,
-  FileCode,
-  Layers,
   AlertCircle,
   CheckCircle2,
-  ListFilter,
   ChevronDown,
   Wrench
 } from 'lucide-react';
 import { AppSettings, Provider, ModelConfig } from '../../types';
-import { DEFAULT_SYS, MODELS, sanitizeApiKey, normalizeChatEndpoint } from '../../services/aiService';
+import { DEFAULT_SYS, MODELS, sanitizeApiKey } from '../../services/aiService';
+import { listVoices } from '../../services/speechUtils';
 import { ToolsSettings } from './ToolsSettings';
 import { getAdapterForProvider } from '../../services/providers';
 import { PremiumAvatar } from '../PremiumAvatar';
@@ -187,6 +180,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   
   // Local state
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+
+  // Browser speech voices load asynchronously; the picker needs them live.
+  const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const load = () => setSystemVoices(listVoices());
+    load();
+    window.speechSynthesis.addEventListener('voiceschanged', load);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', load);
+  }, []);
   const [localProviders, setLocalProviders] = useState<Provider[]>(providers);
   const [localActiveProvId, setLocalActiveProvId] = useState<string>(activeProviderId);
   const [notification, setNotification] = useState<string | null>(null);
@@ -1862,6 +1865,39 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       onChange={e => setLocalSettings(prev => ({ ...prev, tts: e.target.checked }))}
                       className="accent-[var(--accent)] w-4 h-4"
                     />
+                  </div>
+
+                  {/* ttsVoice was persisted by settings and read nowhere - pick it now. */}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-white">Speech Voice</span>
+                      <span className="text-[10px] font-mono text-[#71717a]">{systemVoices.length} available</span>
+                    </div>
+                    <select
+                      value={localSettings.ttsVoice || ''}
+                      onChange={e => setLocalSettings(prev => ({ ...prev, ttsVoice: e.target.value }))}
+                      className="w-full bg-[#18181c] border border-[#27272a] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--accent)] cursor-pointer"
+                    >
+                      <option value="">Auto (best Arabic / English match)</option>
+                      {systemVoices.map(v => (
+                        <option key={`${v.name}-${v.lang}`} value={v.name}>
+                          {v.name} — {v.lang}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        import('../../services/speechUtils').then(({ speakText }) =>
+                          speakText('مرحباً، هذا هو الصوت المختار. Hello from GBackgroundAI.', undefined, undefined, {
+                            voiceName: localSettings.ttsVoice || undefined,
+                            rate: localSettings.ttsSpeed || 1
+                          })
+                        );
+                      }}
+                      className="self-start px-3 py-1.5 rounded-lg bg-[#18181c] border border-[#27272a] hover:border-[var(--accent)] text-[11px] text-[#a1a1aa] hover:text-white transition-all cursor-pointer"
+                    >
+                      ▶ Preview voice
+                    </button>
                   </div>
 
                   <div className="flex flex-col gap-1.5">

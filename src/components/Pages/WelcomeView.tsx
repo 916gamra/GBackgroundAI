@@ -11,7 +11,6 @@ import {
   Cpu,
   ChevronRight,
   ShieldCheck,
-  Layers,
   Smile,
   Activity,
   ChevronDown,
@@ -24,11 +23,7 @@ import {
   Wrench,
   MessageSquare,
   Flame,
-  Sliders,
   Sparkle,
-  Radio,
-  Share2,
-  HardDrive
 } from 'lucide-react';
 import { Session, Provider, AppSettings } from '../../types';
 import { MODELS } from '../../services/aiService';

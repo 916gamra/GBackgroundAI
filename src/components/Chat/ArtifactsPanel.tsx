@@ -3,7 +3,6 @@ import { GeneratedFile } from '../../types';
 import {
   FileCode,
   FileImage,
-  FileText,
   Download,
   Trash2,
   X,
@@ -11,14 +10,9 @@ import {
   Check,
   Terminal,
   Play,
-  Eye,
   Code,
-  RotateCcw,
-  ExternalLink,
   Search,
   ArrowLeft,
-  Sparkles,
-  Layers,
   Loader2
 } from 'lucide-react';
 import { runPython } from '../../services/agentTools';

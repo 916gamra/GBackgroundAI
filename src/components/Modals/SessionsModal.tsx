@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, X, Trash2, RotateCcw, MessageSquare, Home } from 'lucide-react';
+import { Home, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { Session } from '../../types';
 import { PremiumAvatar } from '../PremiumAvatar';
 
