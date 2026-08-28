@@ -4,10 +4,19 @@ export const validateNvidiaApiKey = async (apiKey: string): Promise<ValidationRe
   const cleanKey = apiKey.trim();
 
   if (!cleanKey) {
-    return { 
-      isValid: false, 
-      errorType: 'invalid_key', 
-      message: 'مفتاح الـ API لا يمكن أن يكون فارغاً.' 
+    return {
+      isValid: false,
+      errorType: 'invalid_key',
+      message: 'مفتاح الـ API لا يمكن أن يكون فارغاً.'
+    };
+  }
+
+  // Basic shape check: NVIDIA NIM keys start with "nvapi-" and are long enough
+  if (!cleanKey.startsWith('nvapi-') || cleanKey.length < 20) {
+    return {
+      isValid: false,
+      errorType: 'invalid_key',
+      message: 'صيغة المفتاح غير صحيحة. مفاتيح Nvidia NIM يجب أن تبدأ بـ "nvapi-".'
     };
   }
 
@@ -40,13 +49,6 @@ export const validateNvidiaApiKey = async (apiKey: string): Promise<ValidationRe
       };
     }
   } catch (error: any) {
-    if (cleanKey.length >= 15) {
-      // If network/CORS blocked direct browser fetch but key format looks valid, allow it gracefully
-      return {
-        isValid: true,
-        message: 'تم حفظ المفتاح بنجاح (وضع الاتصال المحلي المحمي).'
-      };
-    }
     if (error.name === 'AbortError' || error.name === 'TimeoutError') {
       return {
         isValid: false,
@@ -57,7 +59,7 @@ export const validateNvidiaApiKey = async (apiKey: string): Promise<ValidationRe
     return {
       isValid: false,
       errorType: 'network_error',
-      message: 'فشل الاتصال المباشر بالخادم (قد توجد قيود CORS)، ولكن يمكنك المتابعة أو حفظ المفتاح.'
+      message: 'فشل الاتصال بخادم Nvidia (قد تكون هناك قيود CORS في المتصفح). حاول مرة أخرى أو أدخل المفتاح يدوياً في الإعدادات.'
     };
   }
 };

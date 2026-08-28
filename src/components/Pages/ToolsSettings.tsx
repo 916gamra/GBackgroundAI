@@ -33,7 +33,30 @@ import {
   ExternalLink,
   ShieldCheck,
   CheckCircle2,
-  Info
+  Info,
+  Cpu,
+  Smartphone,
+  FolderGit2,
+  FileCode,
+  CloudUpload,
+  ScanSearch,
+  Layers,
+  Hammer,
+  HeartPulse,
+  Bot,
+  HardDrive,
+  GitBranch,
+  Box,
+  Network,
+  Ruler,
+  Eye,
+  SearchCode,
+  MicVocal,
+  Users,
+  Workflow,
+  Activity,
+  Zap,
+  Atom
 } from 'lucide-react';
 import { AppSettings, CustomToolConfig } from '../../types';
 import { BUILTIN_TOOL_CATALOG, ToolCatalogItem } from '../../services/agentTools';
@@ -62,7 +85,32 @@ const TOOL_ICON_MAP: Record<string, React.ReactNode> = {
   Clock: <Clock size={18} className="text-yellow-400" />,
   Brain: <Brain size={18} className="text-violet-400" />,
   Database: <Database size={18} className="text-fuchsia-400" />,
-  ScanText: <ScanText size={18} className="text-lime-400" />
+  ScanText: <ScanText size={18} className="text-lime-400" />,
+  Cpu: <Cpu size={18} className="text-amber-400" />,
+  Smartphone: <Smartphone size={18} className="text-emerald-400" />,
+  FolderGit2: <FolderGit2 size={18} className="text-purple-400" />,
+  FileCode: <FileCode size={18} className="text-blue-400" />,
+  Search: <Search size={18} className="text-cyan-400" />,
+  CloudUpload: <CloudUpload size={18} className="text-emerald-400" />,
+  ScanSearch: <ScanSearch size={18} className="text-amber-400" />,
+  Layers: <Layers size={18} className="text-indigo-400" />,
+  Hammer: <Hammer size={18} className="text-fuchsia-400" />,
+  HeartPulse: <HeartPulse size={18} className="text-rose-400" />,
+  Bot: <Bot size={18} className="text-cyan-400" />,
+  HardDrive: <HardDrive size={18} className="text-blue-400" />,
+  GitBranch: <GitBranch size={18} className="text-purple-400" />,
+  Box: <Box size={18} className="text-emerald-400" />,
+  Network: <Network size={18} className="text-amber-400" />,
+  Wrench: <Wrench size={18} className="text-teal-400" />,
+  Ruler: <Ruler size={18} className="text-lime-400" />,
+  Eye: <Eye size={18} className="text-sky-400" />,
+  SearchCode: <SearchCode size={18} className="text-cyan-400" />,
+  MicVocal: <MicVocal size={18} className="text-pink-400" />,
+  Users: <Users size={18} className="text-violet-400" />,
+  Workflow: <Workflow size={18} className="text-fuchsia-400" />,
+  Activity: <Activity size={18} className="text-green-400" />,
+  Zap: <Zap size={18} className="text-yellow-400" />,
+  Atom: <Atom size={18} className="text-indigo-400" />
 };
 
 export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
@@ -351,6 +399,21 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          {/* GitHub Personal Access Token */}
+          <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-[#18181c] border border-[#27272a]">
+            <label className="text-[11px] font-semibold text-emerald-400 flex items-center justify-between">
+              <span>GitHub Personal Access Token (PAT)</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300">Vault</span>
+            </label>
+            <input
+              type="password"
+              value={localSettings.githubPat || ''}
+              onChange={e => setLocalSettings(prev => ({ ...prev, githubPat: e.target.value }))}
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              className="px-3 py-1.5 bg-[#121215] border border-[#27272a] rounded-lg text-white text-xs outline-none focus:border-[var(--accent)] font-mono"
+            />
+          </div>
+
           {/* Google Search / Serper */}
           <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-[#18181c] border border-[#27272a]">
             <label className="text-[11px] font-semibold text-[#a1a1aa]">Google Serper Search API Key</label>

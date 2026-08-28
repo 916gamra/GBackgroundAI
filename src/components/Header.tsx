@@ -9,7 +9,8 @@ import {
   FolderOpen,
   Home,
   Files,
-  Sparkles
+  Sparkles,
+  BookOpen
 } from 'lucide-react';
 import { PremiumAvatar, AvatarStatus } from './PremiumAvatar';
 import { BEHAVIOR_CONFIGS, AgentBehaviorState } from '../bot';
@@ -26,6 +27,7 @@ interface HeaderProps {
   onExportChat: () => void;
   onClearChat: () => void;
   onOpenSettings: () => void;
+  onOpenDocs?: () => void;
   onOpenProject: () => void;
   projectCount: number;
   agentStatus?: AvatarStatus;
@@ -43,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onExportChat,
   onClearChat,
   onOpenSettings,
+  onOpenDocs,
   onOpenProject,
   projectCount,
   agentStatus = 'idle'
@@ -78,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="font-extrabold text-[14px] md:text-[15px] tracking-tight leading-tight text-white flex items-center gap-1.5">
                 <span><span className="text-[var(--accent)]">G</span>BG AI</span>
                 <span className="text-[9px] font-mono font-bold text-[var(--accent)] bg-[var(--accent-light)] px-1.5 py-0.2 rounded-md border border-[var(--accent)]/30">
-                  v13
+                  v14
                 </span>
                 {agentStatus !== 'idle' && (
                   <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-sans font-medium bg-[#18181c] border border-[#27272a] text-[#a1a1aa] animate-fadeIn">
@@ -115,6 +118,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Header action buttons */}
         <div className="flex items-center gap-1">
+          {onOpenDocs && (
+            <button
+              onClick={onOpenDocs}
+              className="w-10 h-10 rounded-2xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-amber-400 hover:border-amber-500/50 flex items-center justify-center transition-all cursor-pointer"
+              title="Developer Documentation & API Hub"
+              aria-label="Developer Docs"
+            >
+              <BookOpen size={17} />
+            </button>
+          )}
+
           <button
             onClick={onToggleSearch}
             className="w-10 h-10 rounded-2xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-white hover:border-[var(--accent)] flex items-center justify-center transition-all cursor-pointer"

@@ -135,6 +135,7 @@ export interface AppSettings {
   makeWebhook?: string;
   elevenlabsKey?: string;
   dalleKey?: string;
+  githubPat?: string;
 }
 
 export interface AgentStepEvent {
@@ -150,3 +151,6 @@ export interface ValidationResult {
   errorType?: 'invalid_key' | 'network_error' | 'unknown';
   message: string;
 }
+
+export * from './ProviderHealthTypes';
+

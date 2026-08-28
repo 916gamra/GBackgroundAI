@@ -3,74 +3,156 @@ import { unifiedChatStream, ChatRequestPayload, StreamEvent } from '../streamEng
 
 export class OpenAICompatibleAdapter implements AIProviderAdapter {
   id = 'openai-compatible';
-  name = 'OpenAI Compatible (NVIDIA, Groq, OpenRouter, DeepSeek)';
+  name = 'OpenAI Compatible (Meta AI, NVIDIA, Groq, OpenRouter, DeepSeek)';
 
   async validate(apiKey: string, endpoint: string): Promise<ProviderHealth> {
     const start = performance.now();
     try {
-      const normalizedEndpoint = this.normalizeBaseUrl(endpoint);
-      const res = await fetch(`${normalizedEndpoint}/models`, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      const latency = Math.round(performance.now() - start);
+      const candidateUrls = this.getCandidateEndpoints(endpoint);
+      let lastErr = 'Failed to connect';
 
-      if (!res.ok) {
-        let msg = await res.text();
+      for (const base of candidateUrls) {
         try {
-           const parsed = JSON.parse(msg);
-           msg = parsed.error?.message || msg;
-        } catch {}
-        return { status: 'error', message: `[HTTP ${res.status}] ${msg}` };
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (apiKey && apiKey.trim()) {
+            headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+          }
+
+          const res = await fetch(`${base}/models`, { headers });
+          const latency = Math.round(performance.now() - start);
+
+          if (res.ok) {
+            const data = await res.json();
+            const models = data.data || data.models || [];
+            return {
+              status: 'connected',
+              latency,
+              message: `Connected successfully via ${base}`,
+              modelCount: models.length
+            };
+          } else {
+            lastErr = `[HTTP ${res.status}] ${await res.text()}`;
+          }
+        } catch (e: any) {
+          lastErr = e.message || 'Network error';
+        }
       }
 
-      const data = await res.json();
-      const models = data.data || [];
-
-      return { 
-        status: 'connected', 
-        latency,
-        message: 'Connection successful',
-        modelCount: models.length
-      };
+      return { status: 'error', message: lastErr };
     } catch (err: any) {
       return { status: 'error', message: err.message || 'Network error' };
     }
   }
 
   async listModels(apiKey: string, endpoint: string): Promise<ModelInfo[]> {
+    let lastError = 'Failed to fetch models. Check your API key or network connection.';
+    
     try {
-      const normalizedEndpoint = this.normalizeBaseUrl(endpoint);
-      const res = await fetch(`${normalizedEndpoint}/models`, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+      const candidateUrls = this.getCandidateEndpoints(endpoint);
+      const cleanKey = (apiKey || '').trim();
+
+      for (const base of candidateUrls) {
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (cleanKey) {
+            headers['Authorization'] = `Bearer ${cleanKey}`;
+          }
+
+          const res = await fetch(`${base}/models`, { headers });
+
+          if (res.ok) {
+            const data = await res.json();
+            const raw = data.data || data.models || [];
+
+            if (Array.isArray(raw) && raw.length > 0) {
+              const list = raw.map((m: any): ModelInfo => {
+                const id = m.id || m.name || String(m);
+                return {
+                  id,
+                  name: this.formatModelName(id),
+                  providerId: this.id,
+                  contextWindow: 128000,
+                  supportsVision: id.toLowerCase().includes('vision') || id.toLowerCase().includes('vl'),
+                  supportsTools: true,
+                  supportsStreaming: true,
+                  supportsReasoning: id.toLowerCase().includes('r1') || id.toLowerCase().includes('nemotron') || id.toLowerCase().includes('think') || id.toLowerCase().includes('reason'),
+                  category: this.categorizeModel(id),
+                  source: 'remote',
+                  description: `Live fetched from ${base}`
+                };
+              });
+
+              if (list.length > 0) return list;
+            }
+          } else {
+            lastError = `[HTTP ${res.status}] ${await res.text()}`;
+          }
+        } catch (e: any) {
+          // If it's a TypeError, it might be CORS
+          lastError = e.message === 'Failed to fetch' ? 'CORS error or network offline.' : (e.message || 'Network error');
         }
-      });
-      
-      if (!res.ok) return this.getDefaultModels();
-      
-      const data = await res.json();
-      const list = (data.data || []).map((m: any): ModelInfo => ({
-        id: m.id,
-        name: m.id,
-        providerId: this.id,
-        contextWindow: 8192,
-        supportsVision: m.id.toLowerCase().includes('vision'),
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: m.id.toLowerCase().includes('deepseek-r1') || m.id.toLowerCase().includes('nemotron') || m.id.toLowerCase().includes('think'),
-        category: this.categorizeModel(m.id),
-        source: 'remote',
-        description: `Dynamically fetched from ${endpoint}`
-      }));
-      return list.length > 0 ? list : this.getDefaultModels();
-    } catch (err) {
-      return this.getDefaultModels();
+      }
+
+      throw new Error(`Failed to fetch models: ${lastError}`);
+    } catch (err: any) {
+      throw new Error(err.message || 'Unknown error while fetching models');
     }
+  }
+
+  private getCandidateEndpoints(endpoint?: string): string[] {
+    if (!endpoint || !endpoint.trim()) {
+      return [
+        'https://integrate.api.nvidia.com/v1',
+        'https://api.nvidia.com/v1',
+        'https://api.groq.com/openai/v1',
+        'https://openrouter.ai/api/v1',
+        'https://api.deepseek.com/v1',
+        'https://api.deepseek.com',
+        'http://localhost:11434/v1'
+      ];
+    }
+
+    const norm = this.normalizeBaseUrl(endpoint);
+    const candidates = [norm];
+
+    // If Nvidia endpoint, include both integrate and standard api
+    if (norm.includes('nvidia.com')) {
+      if (norm.includes('integrate.api.nvidia.com')) {
+        candidates.push('https://api.nvidia.com/v1');
+      } else if (norm.includes('api.nvidia.com')) {
+        candidates.push('https://integrate.api.nvidia.com/v1');
+      }
+    }
+    // If DeepSeek
+    if (norm.includes('deepseek')) {
+      if (!norm.endsWith('/v1')) candidates.push(`${norm}/v1`);
+      candidates.push('https://api.deepseek.com/v1');
+      candidates.push('https://api.deepseek.com');
+    }
+    // If Groq
+    if (norm.includes('groq')) {
+      candidates.push('https://api.groq.com/openai/v1');
+    }
+    // If OpenRouter
+    if (norm.includes('openrouter')) {
+      candidates.push('https://openrouter.ai/api/v1');
+    }
+    // If Meta AI / Model API
+    if (norm.includes('meta.ai') || norm.includes('meta')) {
+      candidates.push('https://api.meta.ai/v1');
+    }
+
+    return Array.from(new Set(candidates));
+  }
+
+  private formatModelName(id: string): string {
+    if (!id) return 'Unknown Model';
+    const parts = id.split('/');
+    const last = parts[parts.length - 1];
+    return last
+      .split('-')
+      .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(' ');
   }
 
   private getDefaultModels(): ModelInfo[] {
@@ -143,7 +225,7 @@ export class OpenAICompatibleAdapter implements AIProviderAdapter {
     const lower = id.toLowerCase();
     if (lower.includes('vision')) return 'vision';
     if (lower.includes('coder') || lower.includes('code')) return 'code';
-    if (lower.includes('r1') || lower.includes('nemotron') || lower.includes('think') || lower.includes('reason')) return 'think';
+    if (lower.includes('r1') || lower.includes('nemotron') || lower.includes('think') || lower.includes('reason') || lower.includes('muse')) return 'think';
     if (lower.includes('flash') || lower.includes('nano') || lower.includes('8b') || lower.includes('mini')) return 'fast';
     return 'general';
   }

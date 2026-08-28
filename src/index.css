@@ -196,9 +196,10 @@ button:active:not(:disabled) {
 }
 
 /* ══════════════════════════════════════════════════════════════ */
-/* SAMSUNG ONE UI 6 & MATERIAL DESIGN 3 OPTIMIZATION SHEET       */
+/* SAMSUNG ONE UI 6 & 7 OPTIMIZATION & MENU STYLESHEET            */
 /* ══════════════════════════════════════════════════════════════ */
 
+/* One UI Core Containers & Cards */
 .oneui-container {
   border-radius: 24px;
   background-color: var(--bg-card);
@@ -208,10 +209,10 @@ button:active:not(:disabled) {
 }
 
 .oneui-card {
-  border-radius: 18px;
+  border-radius: 20px;
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
-  padding: 1rem 1.25rem;
+  padding: 1.15rem 1.25rem;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -221,19 +222,28 @@ button:active:not(:disabled) {
 }
 
 .oneui-btn {
-  border-radius: 24px; /* Warm tablet-style rounded pills */
+  border-radius: 24px; /* Warm Samsung One UI rounded pill */
   padding: 0.6rem 1.2rem;
   font-weight: 600;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.oneui-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .oneui-input {
-  border-radius: 14px;
+  border-radius: 16px;
   background-color: var(--bg-input);
   border: 1px solid var(--border-color);
-  padding: 0.65rem 1rem;
+  padding: 0.75rem 1rem;
   color: var(--text-primary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  font-size: 0.925rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .oneui-input:focus {
@@ -245,5 +255,218 @@ button:active:not(:disabled) {
 /* Claude AI / One UI Fluid Transitions */
 .fluid-transition {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+/* 📱 Samsung One UI 6/7 Menu Styles Sheet & System Tokens      */
+/* ══════════════════════════════════════════════════════════════ */
+
+/* Frosted glass menu surface */
+.oneui-menu-container {
+  background: rgba(18, 18, 20, 0.94);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 26px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  padding: 0.5rem;
+}
+
+[data-mode="light"] .oneui-menu-container {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+/* Interactive Menu Items */
+.oneui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, transform 0.1s ease, color 0.15s ease;
+}
+
+.oneui-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-mode="light"] .oneui-menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.oneui-menu-item:active {
+  transform: scale(0.97);
+}
+
+.oneui-menu-item.active {
+  background-color: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.oneui-menu-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 0.4rem 0.6rem;
+  opacity: 0.6;
+}
+
+/* One UI Section Headers (Viewing zone label) */
+.oneui-section-header {
+  font-size: 0.725rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 0.6rem 0.85rem 0.35rem 0.85rem;
+}
+
+/* Quick Settings Panel Tiles (Samsung Quick Settings matrix) */
+.oneui-quick-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 0.6rem;
+  padding: 0.25rem;
+}
+
+.oneui-quick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 0.6rem;
+  border-radius: 20px;
+  background: rgba(24, 24, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  user-select: none;
+}
+
+[data-mode="light"] .oneui-quick-tile {
+  background: rgba(240, 240, 244, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.oneui-quick-tile:active {
+  transform: scale(0.94);
+}
+
+.oneui-quick-tile.active {
+  background: var(--accent);
+  color: #000000;
+  border-color: var(--accent);
+  box-shadow: 0 6px 20px var(--accent-light);
+}
+
+.oneui-quick-tile-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* One UI Grouped List (Rounded card with stacked items) */
+.oneui-grouped-list {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.oneui-grouped-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.15s ease;
+}
+
+.oneui-grouped-item:last-child {
+  border-bottom: none;
+}
+
+.oneui-grouped-item:hover {
+  background-color: var(--bg-secondary);
+}
+
+/* One UI Segmented Pill Control */
+.oneui-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.oneui-segmented-pill {
+  padding: 0.4rem 0.9rem;
+  border-radius: 9999px;
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oneui-segmented-pill.active {
+  background-color: var(--accent);
+  color: #000000;
+  box-shadow: 0 2px 8px var(--accent-light);
+}
+
+/* One UI Bottom Sheet Modal */
+.oneui-bottom-sheet {
+  background: var(--bg-card);
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  border: 1px solid var(--border-color);
+  border-bottom: none;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+  padding: 1rem 1.25rem max(var(--sab), 1.25rem) 1.25rem;
+}
+
+.oneui-sheet-handle {
+  width: 40px;
+  height: 5px;
+  border-radius: 9999px;
+  background-color: var(--text-secondary);
+  opacity: 0.35;
+  margin: 0.25rem auto 1rem auto;
+}
+
+/* One UI Floating Action Button (FAB) */
+.oneui-fab {
+  border-radius: 22px;
+  background-color: var(--accent);
+  color: #000000;
+  box-shadow: 0 8px 24px var(--accent-light);
+  padding: 0.9rem 1.4rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.oneui-fab:active {
+  transform: scale(0.95);
 }
 

@@ -43,16 +43,35 @@ export async function* unifiedChatStream(request: ChatRequestPayload): AsyncGene
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const body = {
+  const isMeta = endpoint.includes('api.meta.ai') || model.toLowerCase().includes('muse-spark');
+
+  // Format messages: for Meta Model API, convert 'system' to 'developer' role for maximum instruction precedence
+  const formattedMessages = (messages || []).map(m => {
+    if (isMeta && m.role === 'system') {
+      return { ...m, role: 'developer' };
+    }
+    return m;
+  });
+
+  const body: Record<string, any> = {
     model,
-    messages,
-    temperature: temperature ?? 0.7,
-    top_p: topP ?? 1,
+    messages: formattedMessages,
+    temperature: isMeta ? (temperature ?? 1.0) : (temperature ?? 0.7),
+    top_p: isMeta ? (topP ?? 1.0) : (topP ?? 1),
     max_tokens: maxTokens ?? 4096,
     stream: true,
     tools,
     tool_choice: tools?.length ? 'auto' : undefined
   };
+
+  // Support NVIDIA DeepSeek chat template parameters
+  if (endpoint.includes('nvidia.com') && model.includes('deepseek')) {
+    body.chat_template_kwargs = { thinking: true };
+  }
+
+  if (isMeta) {
+    body.max_completion_tokens = maxTokens ?? 4096;
+  }
 
   try {
     const res = await fetch(endpoint, {

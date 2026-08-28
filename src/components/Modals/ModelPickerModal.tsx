@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Search, X, Check, Code, Brain, Zap, Sparkles, Eye, Server, RefreshCw, Layers, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, X, Check, Code, Brain, Zap, Sparkles, Eye, Server, RefreshCw, Layers, CheckCircle2, AlertCircle, Star, Activity } from 'lucide-react';
 import { MODELS, sanitizeApiKey } from '../../services/aiService';
 import { ModelConfig, Provider } from '../../types';
+import { getAdapterForProvider } from '../../services/providers';
 
 interface ModelPickerModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface ModelPickerModalProps {
   currentModelId: string;
   onSelectModel: (id: string) => void;
   customModels?: Record<string, ModelConfig>;
+  onToggleStarModel?: (modelId: string, modelConfig: ModelConfig) => void;
   activeProvider?: Provider;
   providers?: Provider[];
   onSwitchProvider?: (providerId: string) => void;
@@ -21,6 +23,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
   currentModelId,
   onSelectModel,
   customModels,
+  onToggleStarModel,
   activeProvider,
   providers,
   onSwitchProvider,
@@ -30,7 +33,13 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [fetchSuccess, setFetchSuccess] = useState<string | null>(null);
-  const [showAllProviderModels, setShowAllProviderModels] = useState(false);
+
+  // Automatically fetch live models when modal opens
+  useEffect(() => {
+    if (isOpen && activeProvider) {
+      handleFetchLiveModels();
+    }
+  }, [isOpen, activeProvider?.id, activeProvider?.apiKey]);
 
   // Check if provider was configured in Auto Mode
   const isProviderAutoMode = activeProvider?.model === 'auto';
@@ -47,12 +56,13 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
       // Add configured model if missing
       const pMod = activeProvider.model;
       if (pMod && pMod !== 'auto' && !combined[pMod]) {
+        const cleanName = pMod.split('/').pop()?.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') || pMod;
         combined[pMod] = {
-          name: pMod.split('/').pop() || pMod,
+          name: cleanName,
           pv: activeProvider.pvType || activeProvider.id,
           t: 0.7,
           p: 0.95,
-          mk: 8192,
+          mk: 128000,
           cat: 'general',
           desc: `Configured model for ${activeProvider.name}`,
           speed: 8,
@@ -62,12 +72,13 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
 
       // Add default preset model if missing
       if (activeProvider.defaultModel && !combined[activeProvider.defaultModel]) {
+        const cleanName = activeProvider.defaultModel.split('/').pop()?.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') || activeProvider.defaultModel;
         combined[activeProvider.defaultModel] = {
-          name: activeProvider.defaultModel.split('/').pop() || activeProvider.defaultModel,
+          name: cleanName,
           pv: activeProvider.pvType || activeProvider.id,
           t: 0.7,
           p: 0.95,
-          mk: 8192,
+          mk: 128000,
           cat: 'general',
           desc: `Preset default for ${activeProvider.name}`,
           speed: 8,
@@ -75,20 +86,28 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
         };
       }
 
-      // Add available fetched models
+      // Add available live-fetched models
       if (activeProvider.availableModels) {
         activeProvider.availableModels.forEach(mId => {
-          if (mId && !combined[mId]) {
+          if (mId) {
+            const rawLast = mId.split('/').pop() || mId;
+            const cleanName = rawLast.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+            const cat = mId.toLowerCase().includes('vision') ? 'vision'
+              : mId.toLowerCase().includes('r1') || mId.toLowerCase().includes('think') || mId.toLowerCase().includes('pro') || mId.toLowerCase().includes('nemotron') ? 'think'
+              : mId.toLowerCase().includes('code') || mId.toLowerCase().includes('coder') ? 'code'
+              : mId.toLowerCase().includes('flash') || mId.toLowerCase().includes('mini') || mId.toLowerCase().includes('8b') ? 'fast'
+              : 'general';
+
             combined[mId] = {
-              name: mId.split('/').pop() || mId,
+              name: cleanName,
               pv: activeProvider.pvType || activeProvider.id,
               t: 0.7,
               p: 0.95,
-              mk: 8192,
-              cat: 'general',
-              desc: `Available on ${activeProvider.name}`,
-              speed: 8,
-              power: 8
+              mk: mId.toLowerCase().includes('1.5') || mId.toLowerCase().includes('2.5') || mId.toLowerCase().includes('llama-3') ? 128000 : 32768,
+              cat,
+              desc: `Live fetched directly from ${activeProvider.name}`,
+              speed: 9,
+              power: 9
             };
           }
         });
@@ -138,7 +157,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
 
     // 3. Google Gemini aliases
     if (
-      (pType === 'google' || pName.includes('google') || pName.includes('gemini')) &&
+      (pType === 'google' || pType === 'gemini' || pName.includes('google') || pName.includes('gemini')) &&
       (mPv === 'google' || mPv === 'gemini' || id.startsWith('gemini-') || id.startsWith('google/'))
     ) {
       return true;
@@ -152,21 +171,24 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
       return true;
     }
 
-    // 5. NVIDIA NIM aliases
+    // 5. DeepSeek
+    if (
+      (pType === 'deepseek' || pName.includes('deepseek')) &&
+      (mPv === 'deepseek' || id.startsWith('deepseek'))
+    ) {
+      return true;
+    }
+
+    // 6. NVIDIA NIM aliases
     if (
       (pType === 'nvidia' || pId === 'nv-builtin' || pName.includes('nvidia')) &&
       (
         mPv === 'nvidia' ||
         id.startsWith('nvidia/') ||
-        id.startsWith('qwen/') ||
-        id.startsWith('deepseek') ||
         id.startsWith('meta/') ||
-        id.startsWith('mistralai/') ||
-        id.startsWith('moonshotai/') ||
-        id.startsWith('z-ai/') ||
-        id.startsWith('minimaxai/') ||
-        id.startsWith('openai/gpt-oss') ||
-        id.startsWith('google/gemma')
+        id.startsWith('qwen/') ||
+        id.startsWith('deepseek-ai/') ||
+        id.startsWith('mistralai/')
       )
     ) {
       return true;
@@ -175,7 +197,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
     return false;
   };
 
-  // Fetch Live Models directly from Provider endpoint
+  // Fetch Live Models directly from Provider endpoint using adapter
   const handleFetchLiveModels = async () => {
     if (!activeProvider) return;
     setIsFetching(true);
@@ -183,64 +205,21 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
     setFetchSuccess(null);
 
     try {
-      let endpoint = activeProvider.baseUrl.trim();
-      if (endpoint.includes('/chat/completions')) {
-        endpoint = endpoint.replace('/chat/completions', '/models');
-      } else if (endpoint.endsWith('/')) {
-        endpoint = `${endpoint}models`;
-      } else if (!endpoint.endsWith('/models')) {
-        endpoint = `${endpoint}/models`;
-      }
-
+      const adapter = getAdapterForProvider(activeProvider.pvType || activeProvider.id);
       const cleanKey = sanitizeApiKey(activeProvider.apiKey);
-      const headers: Record<string, string> = {
-        'Accept': 'application/json',
-        ...(activeProvider.headers || {})
-      };
-
-      if (cleanKey) {
-        headers['Authorization'] = `Bearer ${cleanKey}`;
-      }
-
-      const res = await fetch(endpoint, {
-        method: 'GET',
-        headers
-      });
-
-      if (!res.ok) {
-        let errDetail = `HTTP ${res.status} ${res.statusText}`;
-        try {
-          const errJson = await res.json();
-          if (errJson?.error?.message) {
-            errDetail = errJson.error.message;
-          }
-        } catch {}
-        setFetchError(`Failed to fetch models: ${errDetail}`);
-        setIsFetching(false);
-        return;
-      }
-
-      const data = await res.json();
-      let list: string[] = [];
-
-      if (Array.isArray(data.data)) {
-        list = data.data.map((m: any) => m.id || m.name).filter(Boolean);
-      } else if (Array.isArray(data.models)) {
-        list = data.models.map((m: any) => m.name || m.id).filter(Boolean);
-      } else if (Array.isArray(data)) {
-        list = data.map((m: any) => typeof m === 'string' ? m : (m.id || m.name)).filter(Boolean);
-      }
+      const fetchedInfos = await adapter.listModels(cleanKey, activeProvider.baseUrl);
+      const list = fetchedInfos.map(m => m.id);
 
       if (list.length > 0) {
-        list = Array.from(new Set(list)).sort();
+        const uniqueList = Array.from(new Set(list)).sort();
         const updated: Provider = {
           ...activeProvider,
-          availableModels: list
+          availableModels: uniqueList
         };
         if (onUpdateProvider) {
           onUpdateProvider(updated);
         }
-        setFetchSuccess(`Fetched ${list.length} real models directly from ${activeProvider.name}! ✨`);
+        setFetchSuccess(`Fetched ${uniqueList.length} real models directly from ${activeProvider.name}! ✨`);
       } else {
         setFetchError('Response contained 0 models in list.');
       }
@@ -251,14 +230,25 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
     }
   };
 
+  // Starred / Custom models
+  const starredList = Object.entries(customModels || {}).filter(([id, m]) => {
+    const q = search.toLowerCase();
+    if (!q) return true;
+    return (
+      m.name.toLowerCase().includes(q) ||
+      id.toLowerCase().includes(q) ||
+      (m.desc && m.desc.toLowerCase().includes(q))
+    );
+  });
+
   // Determine which models to display
   const modelsToDisplay = Object.entries(allModels).filter(([id, m]) => {
-    // Check if model belongs to active provider
+    // Check if model belongs to active provider or search
     const isForActive = isModelForActiveProvider(m, id) ||
       (activeProvider?.availableModels && activeProvider.availableModels.includes(id)) ||
       (configuredModel && (id === configuredModel || id.toLowerCase() === configuredModel.toLowerCase()));
 
-    if (!isForActive) {
+    if (!isForActive && !search) {
       return false;
     }
 
@@ -268,7 +258,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
     return (
       m.name.toLowerCase().includes(q) ||
       id.toLowerCase().includes(q) ||
-      m.desc.toLowerCase().includes(q) ||
+      (m.desc && m.desc.toLowerCase().includes(q)) ||
       (m.pv && m.pv.toLowerCase().includes(q))
     );
   });
@@ -292,21 +282,12 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
               <Layers size={16} />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">Select AI Engine</h3>
+              <h3 className="font-bold text-base text-white">Select AI Model</h3>
               <p className="text-[11px] text-[#a1a1aa] flex items-center gap-1.5 flex-wrap">
                 <span>Active Provider:</span>
                 <span className="font-semibold text-white bg-[#1f1f26] px-1.5 py-0.2 rounded text-[10px] border border-[#33333e]">
                   {activeProvider?.name || 'Current Provider'}
                 </span>
-                {isProviderAutoMode ? (
-                  <span className="text-purple-400 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.2 rounded text-[10px] font-mono">
-                    Auto Mode Active
-                  </span>
-                ) : (
-                  <span className="text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded text-[10px] font-mono">
-                    Configured Model
-                  </span>
-                )}
               </p>
             </div>
           </div>
@@ -317,26 +298,6 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
             <X size={17} />
           </button>
         </div>
-
-        {/* Banner for Configured Model vs Auto Mode */}
-        {!isProviderAutoMode && (
-          <div className="mb-3 p-2.5 rounded-xl bg-[#181820] border border-[#27272a] flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
-              <div className="text-[11px] truncate">
-                <span className="text-[#a1a1aa]">Configured on Provider: </span>
-                <span className="font-bold font-mono text-white truncate">{configuredModel || currentModelId}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowAllProviderModels(prev => !prev)}
-              className="px-2 py-1 rounded-lg bg-[#22222a] hover:bg-[#2c2c36] border border-[#33333e] text-[10px] font-semibold text-[var(--accent)] hover:text-white transition-all cursor-pointer shrink-0"
-            >
-              {showAllProviderModels ? 'Show Configured Only' : 'Browse All Models'}
-            </button>
-          </div>
-        )}
 
         {/* Live Fetch & Search Bar */}
         <div className="flex flex-col gap-2 mb-3">
@@ -352,7 +313,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
               />
             </div>
 
-            {/* Direct Fetch Models Button inside Chatbot Page */}
+            {/* Direct Fetch Models Button */}
             <button
               onClick={handleFetchLiveModels}
               disabled={isFetching}
@@ -380,134 +341,194 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
         </div>
 
         {/* Models list */}
-        <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
-          {/* AUTO TASK ROUTER (Shown if Auto mode is active or when browsing all) */}
-          {(isProviderAutoMode || showAllProviderModels) &&
-            ('auto'.includes(search.toLowerCase()) || 'task router smart auto'.includes(search.toLowerCase())) && (
-              <div
-                onClick={() => {
-                  onSelectModel('auto');
-                  onClose();
-                }}
-                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
-                  currentModelId === 'auto'
-                    ? 'bg-[#1c1c24] border-[var(--accent)] shadow-sm'
-                    : 'bg-[#141418] border-[#27272a] hover:bg-[#18181f] hover:border-[#3f3f46]'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center shrink-0 mt-0.5 text-purple-400">
-                  <Sparkles size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-xs text-white">Auto (Smart Task Router)</span>
-                    <span className="px-1.5 py-0.2 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[9px] font-mono font-bold">
-                      AUTO ROUTER
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#71717a] mt-0.5 leading-snug">
-                    Automatically routes requests to the optimal model based on query complexity and tools
-                  </p>
-                </div>
-                {currentModelId === 'auto' && <Check size={16} className="text-[var(--accent)] shrink-0 mt-1" />}
+        <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1">
+
+          {/* SAVED / STARRED MODELS SECTION (Costume Models) */}
+          {starredList.length > 0 && (
+            <div className="flex flex-col gap-2 p-2.5 rounded-2xl bg-[#17171f] border border-amber-500/30">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-300 px-1">
+                <span className="flex items-center gap-1.5">
+                  <Star size={14} className="fill-amber-400 text-amber-400" />
+                  <span>Starred / Saved Custom Models (الموديلات المحفوظة)</span>
+                </span>
+                <span className="text-[10px] font-mono text-amber-400/80 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                  {starredList.length} Saved
+                </span>
               </div>
-            )}
 
-          {modelsToDisplay.length === 0 ? (
-            <div className="text-center py-8 text-xs text-[#71717a] flex flex-col items-center justify-center gap-2">
-              <Server size={24} className="opacity-40" />
-              <span>No models currently listed for {activeProvider?.name}</span>
-              <button
-                onClick={handleFetchLiveModels}
-                className="mt-2 text-[var(--accent)] hover:underline text-xs flex items-center gap-1 font-semibold"
-              >
-                <RefreshCw size={12} />
-                <span>Fetch available models from provider API</span>
-              </button>
-            </div>
-          ) : (
-            modelsToDisplay.map(([id, m]) => {
-              const isSelected = id === currentModelId;
-              const matchingProv = (providers || []).find(p => 
-                p.id === m.pv || 
-                p.pvType === m.pv || 
-                (m.pv === 'nvidia' && (p.id === 'nv-builtin' || p.pvType === 'nvidia')) ||
-                activeProvider?.id === m.pv
-              ) || activeProvider;
+              <div className="flex flex-col gap-1.5">
+                {starredList.map(([id, m]) => {
+                  const isSelected = id === currentModelId;
+                  return (
+                    <div
+                      key={`starred-${id}`}
+                      onClick={() => {
+                        onSelectModel(id);
+                        onClose();
+                      }}
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                        isSelected
+                          ? 'bg-[#1e1d2b] border-amber-400/80 text-white'
+                          : 'bg-[#13131a] border-[#292936] hover:bg-[#1c1c28]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onToggleStarModel) onToggleStarModel(id, m);
+                          }}
+                          className="p-1 rounded text-amber-400 hover:text-amber-300 cursor-pointer"
+                          title="Remove from Starred Models"
+                        >
+                          <Star size={14} className="fill-amber-400" />
+                        </button>
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs text-white truncate flex items-center gap-1.5">
+                            {m.name}
+                            <span className="text-[9px] font-mono bg-amber-500/20 text-amber-300 px-1 rounded">
+                              Saved
+                            </span>
+                          </div>
+                          <div className="text-[10px] font-mono text-[#a1a1aa] truncate">{id}</div>
+                        </div>
+                      </div>
 
-              const hasApiKey = matchingProv && (matchingProv.pvType === 'ollama' || matchingProv.id === 'ollama' || (matchingProv.apiKey && matchingProv.apiKey.trim().length > 0));
-              const isWorking = !!matchingProv && matchingProv.status !== 'error' && hasApiKey;
-              const statusTitle = !matchingProv ? 'No provider found' : matchingProv.status === 'error' ? 'Provider connection error' : !hasApiKey ? 'Missing API Key (Cannot access model)' : 'Model working & ready';
-              const pvType = (m.pv || '').toLowerCase();
-              let pvBadgeClass = 'bg-blue-500/15 border-blue-500/30 text-blue-400';
-              if (pvType === 'groq') {
-                pvBadgeClass = 'bg-orange-500/15 border-orange-500/30 text-orange-400';
-              } else if (pvType === 'google' || pvType === 'gemini') {
-                pvBadgeClass = 'bg-blue-500/15 border-blue-500/30 text-blue-400';
-              } else if (pvType === 'nvidia') {
-                pvBadgeClass = 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400';
-              }
-
-              return (
-                <div
-                  key={id}
-                  onClick={() => {
-                    onSelectModel(id);
-                    onClose();
-                  }}
-                  className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
-                    isSelected
-                      ? 'bg-[#181824] border-[var(--accent)] shadow-md shadow-[var(--accent-light)]'
-                      : 'bg-[#141418] border-[#27272a] hover:bg-[#18181f] hover:border-[#3f3f46]'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${
-                    isSelected
-                      ? 'bg-[var(--accent-light)] border-[var(--accent)]/40 text-[var(--accent)]'
-                      : 'bg-[#1c1c20] border-[#27272a] text-[#a1a1aa]'
-                  }`}>
-                    {getCategoryIcon(m.cat)}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${isWorking ? 'bg-emerald-500 shadow-[0_0_4px_#10b981]' : 'bg-rose-500 shadow-[0_0_4px_#f43f5e]'}`} title={statusTitle} />
-                        {m.name}
-                      </span>
-                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${pvBadgeClass}`}>
-                        {(m.pv || 'MODEL').toUpperCase()}
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded bg-[#27272a] text-[#a1a1aa] text-[9px] font-mono font-semibold">
-                        {getCategoryLabel(m.cat)}
-                      </span>
-                      {m.ex && (
-                        <span className="px-1.5 py-0.2 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[9px] font-mono font-bold">
-                          THINKING
-                        </span>
+                      {isSelected ? (
+                        <div className="px-2 py-0.5 rounded bg-amber-400/20 border border-amber-400/40 text-amber-300 text-[10px] font-bold shrink-0">
+                          Active
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-[var(--accent)] font-semibold shrink-0">Select</span>
                       )}
                     </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-                    <p className="text-[11px] text-[#71717a] mt-0.5 leading-snug">{m.desc}</p>
+          {/* ALL PROVIDER MODELS */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[11px] font-bold text-[#a1a1aa] uppercase tracking-wider px-1">
+              {activeProvider?.name || 'Available'} Models
+            </div>
 
-                    <div className="flex items-center gap-3 mt-1.5 text-[10px] font-mono text-[#71717a] flex-wrap">
-                      {m.mk && <span>📏 {Math.round(m.mk / 1024)}k Context</span>}
-                      <span className="text-[#52525b] truncate max-w-[220px]">{id}</span>
+            {modelsToDisplay.length === 0 ? (
+              <div className="text-center py-8 text-xs text-[#71717a] flex flex-col items-center justify-center gap-2">
+                <Server size={24} className="opacity-40" />
+                <span>No models currently listed for {activeProvider?.name}</span>
+                <button
+                  onClick={handleFetchLiveModels}
+                  className="mt-2 text-[var(--accent)] hover:underline text-xs flex items-center gap-1 font-semibold"
+                >
+                  <RefreshCw size={12} />
+                  <span>Fetch available models from provider API</span>
+                </button>
+              </div>
+            ) : (
+              modelsToDisplay.map(([id, m]) => {
+                const isSelected = id === currentModelId;
+                const isStarred = !!customModels?.[id];
+                const matchingProv = (providers || []).find(p => 
+                  p.id === m.pv || 
+                  p.pvType === m.pv || 
+                  (m.pv === 'nvidia' && (p.id === 'nv-builtin' || p.pvType === 'nvidia')) ||
+                  activeProvider?.id === m.pv
+                ) || activeProvider;
+
+                const hasApiKey = matchingProv && (matchingProv.pvType === 'ollama' || matchingProv.id === 'ollama' || (matchingProv.apiKey && matchingProv.apiKey.trim().length > 0));
+                const isWorking = !!matchingProv && matchingProv.status !== 'error' && hasApiKey;
+                const statusTitle = !matchingProv ? 'No provider found' : matchingProv.status === 'error' ? 'Provider connection error' : !hasApiKey ? 'Missing API Key' : 'Model ready';
+                const pvType = (m.pv || '').toLowerCase();
+                let pvBadgeClass = 'bg-blue-500/15 border-blue-500/30 text-blue-400';
+                if (pvType === 'groq') {
+                  pvBadgeClass = 'bg-orange-500/15 border-orange-500/30 text-orange-400';
+                } else if (pvType === 'google' || pvType === 'gemini') {
+                  pvBadgeClass = 'bg-blue-500/15 border-blue-500/30 text-blue-400';
+                } else if (pvType === 'nvidia') {
+                  pvBadgeClass = 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400';
+                } else if (pvType === 'meta') {
+                  pvBadgeClass = 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400';
+                } else if (pvType === 'deepseek') {
+                  pvBadgeClass = 'bg-cyan-500/15 border-cyan-500/30 text-cyan-400';
+                }
+
+                return (
+                  <div
+                    key={id}
+                    onClick={() => {
+                      onSelectModel(id);
+                      onClose();
+                    }}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                      isSelected
+                        ? 'bg-[#181824] border-[var(--accent)] shadow-md shadow-[var(--accent-light)]'
+                        : 'bg-[#141418] border-[#27272a] hover:bg-[#18181f] hover:border-[#3f3f46]'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${
+                      isSelected
+                        ? 'bg-[var(--accent-light)] border-[var(--accent)]/40 text-[var(--accent)]'
+                        : 'bg-[#1c1c20] border-[#27272a] text-[#a1a1aa]'
+                    }`}>
+                      {getCategoryIcon(m.cat)}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${isWorking ? 'bg-emerald-500 shadow-[0_0_4px_#10b981]' : 'bg-rose-500 shadow-[0_0_4px_#f43f5e]'}`} title={statusTitle} />
+                          {m.name}
+                        </span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${pvBadgeClass}`}>
+                          {(m.pv || 'MODEL').toUpperCase()}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded bg-[#27272a] text-[#a1a1aa] text-[9px] font-mono font-semibold">
+                          {getCategoryLabel(m.cat)}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-[#71717a] mt-0.5 leading-snug">{m.desc}</p>
+
+                      <div className="flex items-center gap-3 mt-1.5 text-[10px] font-mono text-[#71717a] flex-wrap">
+                        {m.mk && <span>📏 {Math.round(m.mk / 1024)}k Context</span>}
+                        <span className="text-[#52525b] truncate max-w-[200px]">{id}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                      {/* Star ⭐ Toggle Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onToggleStarModel) onToggleStarModel(id, m);
+                        }}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isStarred
+                            ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                            : 'bg-[#18181c] border-[#27272a] text-[#71717a] hover:text-amber-300 hover:border-amber-500/30'
+                        }`}
+                        title={isStarred ? 'Remove from Saved Custom Models' : 'Save model with Star ⭐'}
+                      >
+                        <Star size={13} className={isStarred ? 'fill-amber-400' : ''} />
+                      </button>
+
+                      {isSelected ? (
+                        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--accent-light)] border border-[var(--accent)]/40 text-[var(--accent)] text-[10px] font-bold">
+                          <Check size={12} />
+                          <span>Active</span>
+                        </div>
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border border-[#3f3f46]" />
+                      )}
                     </div>
                   </div>
+                );
+              })
+            )}
+          </div>
 
-                  {isSelected ? (
-                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--accent-light)] border border-[var(--accent)]/40 text-[var(--accent)] text-[10px] font-bold shrink-0 mt-0.5">
-                      <Check size={12} />
-                      <span>Active</span>
-                    </div>
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border border-[#3f3f46] shrink-0 mt-1" />
-                  )}
-                </div>
-              );
-            })
-          )}
         </div>
       </div>
     </div>

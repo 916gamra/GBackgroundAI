@@ -18,7 +18,8 @@ import {
 
 export const EP = {
   nvidia: 'https://integrate.api.nvidia.com/v1/chat/completions',
-  groq: 'https://api.groq.com/openai/v1/chat/completions'
+  groq: 'https://api.groq.com/openai/v1/chat/completions',
+  meta: 'https://api.meta.ai/v1/chat/completions'
 };
 
 export function sanitizeApiKey(key?: string): string {
@@ -52,347 +53,301 @@ Core behaviors:
 - For complex tasks, break them down methodically.`;
 
 export const MODELS: Record<string, ModelConfig> = {
-  'qwen/qwen3-coder-480b-a35b-instruct': {
-    name: 'Qwen3-Coder 480B',
-    pv: 'nvidia',
-    t: 0.6,
-    p: 0.95,
-    mk: 8192,
-    cat: 'code',
-    desc: 'Largest MoE coding model — top accuracy',
-    speed: 4,
-    power: 10
-  },
-  'qwen/qwen3-coder-30b-a3b-instruct': {
-    name: 'Qwen3-Coder 30B',
-    pv: 'nvidia',
-    t: 0.6,
-    p: 0.95,
-    mk: 8192,
-    cat: 'code',
-    desc: 'Fast and responsive coding model',
-    speed: 8,
-    power: 7
-  },
-  'qwen/qwen3.5-397b-a17b': {
-    name: 'Qwen3.5 397B',
-    pv: 'nvidia',
-    t: 0.6,
-    p: 0.95,
-    mk: 16384,
-    ex: { chat_template_kwargs: { enable_thinking: true } },
-    cat: 'think',
-    desc: 'Thinking reasoning • 16K context',
-    speed: 4,
-    power: 9
-  },
-  'nvidia/llama-3.3-nemotron-super-49b-v1.5': {
-    name: 'Nemotron Super 49B',
-    pv: 'nvidia',
-    t: 0.6,
-    p: 0.95,
-    mk: 65536,
-    sysPfx: '/think',
-    cat: 'think',
-    desc: '65K context • Deep logic /think',
-    speed: 5,
-    power: 8
-  },
-  'nvidia/nemotron-3-nano-30b-a3b': {
-    name: 'Nemotron Nano 30B',
-    pv: 'nvidia',
-    t: 1,
-    p: 1,
-    mk: 16384,
-    ex: { reasoning_budget: 16384, chat_template_kwargs: { enable_thinking: true } },
-    cat: 'think',
-    desc: 'Fast reasoning engine',
-    speed: 7,
-    power: 6
-  },
-  'deepseek-ai/deepseek-v4-flash-0731': {
-    name: 'DeepSeek V4 Flash',
-    pv: 'nvidia',
-    t: 1,
-    p: 0.95,
-    mk: 16384,
-    ex: { chat_template_kwargs: { thinking: true, reasoning_effort: 'high' } },
-    cat: 'think',
-    desc: 'DeepSeek V4 Flash on NVIDIA NIM • 16K reasoning',
-    speed: 9,
-    power: 10
-  },
-  'deepseek-ai/deepseek-r1': {
-    name: 'DeepSeek R1',
-    pv: 'nvidia',
-    t: 0.6,
-    p: 0.95,
-    mk: 16384,
-    ex: { chat_template_kwargs: { thinking: true, reasoning_effort: 'high' } },
-    cat: 'think',
-    desc: 'DeepSeek R1 reasoning on NVIDIA NIM',
-    speed: 4,
-    power: 10
-  },
-  'deepseek-ai/deepseek-v3.1-terminus': {
-    name: 'DeepSeek Terminus',
-    pv: 'nvidia',
-    t: 0.2,
-    p: 0.7,
-    mk: 8192,
-    ex: { chat_template_kwargs: { thinking: true, reasoning_effort: 'high' } },
-    cat: 'think',
-    desc: 'High precision and mathematical clarity',
-    speed: 3,
-    power: 10
-  },
-  'deepseek-ai/deepseek-v3.2': {
-    name: 'DeepSeek V3.2',
-    pv: 'nvidia',
-    t: 1,
-    p: 0.95,
-    mk: 8192,
-    ex: { chat_template_kwargs: { thinking: true, reasoning_effort: 'high' } },
-    cat: 'think',
-    desc: 'Mathematics and complex algorithms',
-    speed: 4,
-    power: 9
-  },
-  'moonshotai/kimi-k2.5': {
-    name: 'Kimi K2.5',
-    pv: 'nvidia',
-    t: 1,
-    p: 1,
-    mk: 16384,
-    ex: { chat_template_kwargs: { thinking: true } },
-    cat: 'think',
-    desc: 'Moonshot AI • 16K thinking window',
-    speed: 4,
-    power: 8
-  },
-  'z-ai/glm5': {
-    name: 'GLM-5',
-    pv: 'nvidia',
-    t: 1,
-    p: 1,
-    mk: 16384,
-    ex: { chat_template_kwargs: { enable_thinking: true, clear_thinking: false } },
-    cat: 'think',
-    desc: 'Z-AI • 16K deep reasoning',
-    speed: 5,
-    power: 8
-  },
-  'z-ai/glm4.7': {
-    name: 'GLM-4.7',
-    pv: 'nvidia',
-    t: 1,
-    p: 1,
-    mk: 16384,
-    ex: { chat_template_kwargs: { enable_thinking: true, clear_thinking: false } },
-    cat: 'think',
-    desc: 'Rapid GLM thinking variant',
-    speed: 7,
-    power: 7
-  },
-  'minimaxai/minimax-m3': {
-    name: 'MiniMax M3',
-    pv: 'nvidia',
-    t: 1,
-    p: 0.95,
-    mk: 8192,
-    cat: 'general',
-    desc: 'MiniMax M3 model on NVIDIA NIM • 8K tokens',
-    speed: 7,
-    power: 9
-  },
-  'minimaxai/minimax-m2.1': {
-    name: 'MiniMax M2.1',
-    pv: 'nvidia',
-    t: 1,
-    p: 0.95,
-    mk: 8192,
-    cat: 'general',
-    desc: 'Balanced chat and structured writing',
-    speed: 6,
-    power: 7
-  },
-  'openai/gpt-oss-120b': {
-    name: 'GPT-OSS 120B (NVIDIA)',
-    pv: 'nvidia',
-    t: 0.7,
-    p: 1,
-    mk: 8192,
-    cat: 'general',
-    desc: 'Open-weight GPT architecture on NVIDIA NIM',
-    speed: 5,
-    power: 8
-  },
-  'openai/gpt-oss-20b': {
-    name: 'GPT-OSS 20B (NVIDIA)',
-    pv: 'nvidia',
-    t: 1,
-    p: 1,
-    mk: 4096,
-    cat: 'general',
-    desc: 'NVIDIA NIM • Open-weight GPT 20B reasoning model',
-    speed: 9,
-    power: 7
-  },
-  'mistralai/mistral-large-3-675b-instruct-2512': {
-    name: 'Mistral Large 3',
-    pv: 'nvidia',
-    t: 0.15,
-    p: 1,
-    mk: 2048,
-    cat: 'general',
-    desc: '675B flagship Mistral model',
-    speed: 3,
-    power: 9
-  },
-  'mistralai/mixtral-8x22b-instruct-v0.1': {
-    name: 'Mixtral 8×22B',
-    pv: 'nvidia',
-    t: 0.5,
-    p: 1,
-    mk: 1024,
-    cat: 'general',
-    desc: 'MoE speed • 80+ human languages',
-    speed: 8,
-    power: 6
-  },
-  'google/gemma-3n-e2b-it': {
-    name: 'Gemma 3N E2B',
-    pv: 'nvidia',
-    t: 0.2,
-    p: 0.7,
-    mk: 512,
-    cat: 'general',
-    desc: 'Lightweight and ultra quick response',
-    speed: 10,
-    power: 4
-  },
-  'groq/gpt-oss-120b': {
-    name: 'GPT-OSS 120B (Groq)',
-    pv: 'groq',
-    mid: 'openai/gpt-oss-120b',
-    t: 1,
-    p: 1,
-    mk: 8192,
-    ex: { reasoning_effort: 'high' },
-    cat: 'fast',
-    desc: 'Groq LPU Engine • Ultra-fast inference',
-    speed: 10,
-    power: 8
-  },
-  'groq/gpt-oss-20b': {
-    name: 'GPT-OSS 20B (Groq)',
-    pv: 'groq',
-    mid: 'openai/gpt-oss-20b',
-    t: 1,
-    p: 1,
-    mk: 8192,
-    ex: { reasoning_effort: 'high' },
-    cat: 'fast',
-    desc: 'Lightning-fast Groq LPU responses',
-    speed: 10,
-    power: 5
-  },
+  // Google Gemini Official Models
   'gemini-2.5-flash': {
     name: 'Gemini 2.5 Flash',
     pv: 'google',
     t: 0.7,
     p: 0.95,
-    mk: 8192,
+    mk: 1048576,
     cat: 'fast',
-    desc: 'Google Next-Gen multimodal intelligence with 1M context',
+    desc: 'Google Gemini 2.5 Flash • 1M Context • Ultra Fast & Versatile',
     speed: 10,
-    power: 9
+    power: 9,
+    supportsVision: true,
+    supportsTools: true
   },
   'gemini-2.5-pro': {
     name: 'Gemini 2.5 Pro',
     pv: 'google',
     t: 0.7,
     p: 0.95,
-    mk: 8192,
+    mk: 2097152,
     cat: 'think',
-    desc: 'Google Flagship deep reasoning and complex coding model',
-    speed: 6,
-    power: 10
+    desc: 'Google Gemini 2.5 Pro • SOTA Multimodal Reasoning & Complex Coding',
+    speed: 8,
+    power: 10,
+    supportsVision: true,
+    supportsTools: true
   },
   'gemini-2.0-flash': {
     name: 'Gemini 2.0 Flash',
     pv: 'google',
     t: 0.7,
     p: 0.95,
-    mk: 8192,
+    mk: 1048576,
     cat: 'fast',
-    desc: 'Real-time ultra low latency multimodal flash',
+    desc: 'Next-gen real-time Gemini model with 1M context',
     speed: 10,
-    power: 8
+    power: 8,
+    supportsVision: true,
+    supportsTools: true
   },
   'gemini-1.5-pro': {
     name: 'Gemini 1.5 Pro',
     pv: 'google',
     t: 0.7,
     p: 0.95,
-    mk: 8192,
+    mk: 1048576,
     cat: 'general',
-    desc: 'Google 2M context window foundation model',
+    desc: 'High precision 1M token context reasoning model',
     speed: 7,
-    power: 9
+    power: 9,
+    supportsVision: true,
+    supportsTools: true
   },
   'gemini-1.5-flash': {
     name: 'Gemini 1.5 Flash',
     pv: 'google',
     t: 0.7,
     p: 0.95,
-    mk: 8192,
+    mk: 1048576,
     cat: 'fast',
-    desc: 'Cost-efficient and fast lightweight Gemini',
+    desc: 'Lightweight fast response Gemini model',
     speed: 9,
-    power: 7
+    power: 8,
+    supportsVision: true,
+    supportsTools: true
   },
+
+  // OpenAI
+  'gpt-4o': {
+    name: 'GPT-4o',
+    pv: 'custom',
+    t: 0.7,
+    p: 0.95,
+    mk: 128000,
+    cat: 'general',
+    desc: 'OpenAI Omni flagship multimodal model',
+    speed: 8,
+    power: 10,
+    supportsVision: true,
+    supportsTools: true
+  },
+  'gpt-4o-mini': {
+    name: 'GPT-4o Mini',
+    pv: 'custom',
+    t: 0.7,
+    p: 0.95,
+    mk: 128000,
+    cat: 'fast',
+    desc: 'Fast, efficient, affordable OpenAI model',
+    speed: 9,
+    power: 8,
+    supportsVision: true,
+    supportsTools: true
+  },
+  'o3-mini': {
+    name: 'o3-mini',
+    pv: 'custom',
+    t: 0.7,
+    p: 0.95,
+    mk: 128000,
+    cat: 'think',
+    desc: 'OpenAI STEM reasoning model',
+    speed: 7,
+    power: 9,
+    supportsThinking: true
+  },
+
+  // DeepSeek Official
+  'deepseek-chat': {
+    name: 'DeepSeek V3 (Chat)',
+    pv: 'deepseek',
+    t: 0.6,
+    p: 0.95,
+    mk: 64000,
+    cat: 'code',
+    desc: 'DeepSeek V3 Chat API • SOTA Open Weights',
+    speed: 8,
+    power: 9,
+    supportsTools: true
+  },
+  'deepseek-reasoner': {
+    name: 'DeepSeek R1 (Reasoner)',
+    pv: 'deepseek',
+    t: 0.6,
+    p: 0.95,
+    mk: 64000,
+    cat: 'think',
+    desc: 'DeepSeek R1 Reasoning engine with chain of thought',
+    speed: 6,
+    power: 10,
+    supportsThinking: true
+  },
+
+  // Groq LPU
   'llama-3.3-70b-versatile': {
     name: 'Llama 3.3 70B (Groq)',
     pv: 'groq',
     t: 0.7,
-    p: 0.9,
-    mk: 8192,
+    p: 0.95,
+    mk: 128000,
     cat: 'general',
-    desc: 'Meta Llama 3.3 70B on Groq LPU Ultra-fast',
+    desc: 'Ultra-fast Llama 3.3 70B running on Groq LPUs',
     speed: 10,
-    power: 9
+    power: 9,
+    supportsTools: true
   },
   'llama-3.1-8b-instant': {
     name: 'Llama 3.1 8B (Groq)',
     pv: 'groq',
     t: 0.7,
-    p: 0.9,
-    mk: 8192,
+    p: 0.95,
+    mk: 128000,
     cat: 'fast',
-    desc: 'Ultra instant 8B response on Groq',
+    desc: 'Instant latency Llama 3.1 8B on Groq',
     speed: 10,
-    power: 6
+    power: 7
   },
   'mixtral-8x7b-32768': {
     name: 'Mixtral 8x7B (Groq)',
     pv: 'groq',
     t: 0.7,
     p: 0.9,
-    mk: 8192,
+    mk: 32768,
     cat: 'general',
     desc: 'MoE 32K context with blazing Groq throughput',
     speed: 9,
+    power: 7
+  },
+
+  // OpenRouter & Anthropic
+  'anthropic/claude-3.5-sonnet': {
+    name: 'Claude 3.5 Sonnet',
+    pv: 'openrouter',
+    t: 0.7,
+    p: 0.95,
+    mk: 200000,
+    cat: 'code',
+    desc: 'Industry leader in coding, reasoning and agentic tasks',
+    speed: 8,
+    power: 10,
+    supportsVision: true,
+    supportsTools: true
+  },
+  'meta-llama/llama-3.3-70b-instruct': {
+    name: 'Llama 3.3 70B Instruct',
+    pv: 'openrouter',
+    t: 0.7,
+    p: 0.95,
+    mk: 128000,
+    cat: 'general',
+    desc: 'Open-weights flagship model across OpenRouter',
+    speed: 8,
+    power: 9,
+    supportsTools: true
+  },
+
+  // Meta Model API (Official)
+  'muse-spark-1.2': {
+    name: 'Muse Spark 1.2',
+    pv: 'meta',
+    t: 1.0,
+    p: 1.0,
+    mk: 128000,
+    cat: 'think',
+    desc: 'Meta Model API • Advanced internal reasoning model with developer instructions',
+    speed: 8,
+    power: 10,
+    supportsThinking: true,
+    supportsTools: true
+  },
+  'muse-spark-1.1': {
+    name: 'Muse Spark 1.1',
+    pv: 'meta',
+    t: 1.0,
+    p: 1.0,
+    mk: 128000,
+    cat: 'think',
+    desc: 'Meta Model API • High-speed reasoning model for chat and coding',
+    speed: 9,
+    power: 9,
+    supportsThinking: true,
+    supportsTools: true
+  },
+
+  // NVIDIA NIM
+  'deepseek-ai/deepseek-v4-pro-0813': {
+    name: 'DeepSeek V4 Pro (NVIDIA)',
+    pv: 'nvidia',
+    t: 1.0,
+    p: 0.95,
+    mk: 16384,
+    cat: 'think',
+    desc: 'DeepSeek V4 Pro high-performance flagship model via NVIDIA NIM',
+    speed: 9,
+    power: 10,
+    supportsThinking: true,
+    supportsTools: true
+  },
+  'deepseek-ai/deepseek-r1': {
+    name: 'DeepSeek R1 (NVIDIA)',
+    pv: 'nvidia',
+    t: 0.6,
+    p: 0.95,
+    mk: 64000,
+    cat: 'think',
+    desc: 'DeepSeek R1 full reasoning model running on NVIDIA NIM microservices',
+    speed: 7,
+    power: 10,
+    supportsThinking: true,
+    supportsTools: true
+  },
+  'meta/llama-3.3-70b-instruct': {
+    name: 'Llama 3.3 70B (NVIDIA)',
+    pv: 'nvidia',
+    t: 0.6,
+    p: 0.95,
+    mk: 128000,
+    cat: 'general',
+    desc: 'NVIDIA NIM enterprise microservice',
+    speed: 8,
+    power: 9,
+    supportsTools: true
+  },
+  'nvidia/llama-3.1-nemotron-70b-instruct': {
+    name: 'Llama 3.1 Nemotron 70B',
+    pv: 'nvidia',
+    t: 0.6,
+    p: 0.95,
+    mk: 128000,
+    cat: 'think',
+    desc: 'NVIDIA custom tuned Nemotron 70B reasoning model',
+    speed: 7,
+    power: 9
+  },
+
+  // Ollama
+  'llama3:latest': {
+    name: 'Llama 3 (Ollama)',
+    pv: 'ollama',
+    t: 0.7,
+    p: 0.95,
+    mk: 8192,
+    cat: 'general',
+    desc: 'Local Ollama instance model',
+    speed: 8,
     power: 7
   }
 };
 
 export const ROUTE_MAP: Record<string, string[]> = {
-  code: ['qwen/qwen3-coder-480b-a35b-instruct', 'qwen/qwen3-coder-30b-a3b-instruct', 'deepseek-ai/deepseek-v3.2'],
-  think: ['deepseek-ai/deepseek-r1', 'deepseek-ai/deepseek-v3.1-terminus', 'qwen/qwen3.5-397b-a17b'],
-  fast: ['groq/gpt-oss-20b', 'groq/gpt-oss-120b', 'google/gemma-3n-e2b-it'],
-  write: ['nvidia/llama-3.3-nemotron-super-49b-v1.5', 'minimaxai/minimax-m2.1', 'openai/gpt-oss-120b'],
-  general: ['qwen/qwen3-coder-480b-a35b-instruct', 'openai/gpt-oss-120b', 'minimaxai/minimax-m2.1']
+  code: ['gemini-2.5-pro', 'anthropic/claude-3.5-sonnet', 'deepseek-chat', 'gpt-4o'],
+  think: ['gemini-2.5-pro', 'deepseek-reasoner', 'o3-mini', 'nvidia/llama-3.1-nemotron-70b-instruct'],
+  fast: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gpt-4o-mini', 'llama-3.1-8b-instant'],
+  write: ['gemini-2.5-flash', 'gpt-4o', 'meta-llama/llama-3.3-70b-instruct'],
+  general: ['gemini-2.5-flash', 'gpt-4o', 'deepseek-chat']
 };
 
 export function detectTask(text: string): 'code' | 'think' | 'fast' | 'write' | 'general' {

@@ -10,7 +10,8 @@ import {
   ProjectFile,
   Snippet,
   AgentStepEvent,
-  GeneratedFile
+  GeneratedFile,
+  ModelConfig
 } from './types';
 import { ArtifactsPanel } from './components/Chat/ArtifactsPanel';
 import {
@@ -55,8 +56,18 @@ import {
   executePdfAnalyzer,
   triggerN8nAutomation,
   freeTTSSTT,
-  executeSandboxedCustomTool
+  executeSandboxedCustomTool,
+  executeModbusTool,
+  executeTermuxBridge,
+  fetchGitHubTree,
+  readGitHubFile,
+  searchGitHubCode,
+  publishToGitHub,
+  analyzeCodePro,
+  simulateCloneAndAnalyze,
+  executeAgentToolUniversal
 } from './services/agentTools';
+import { gSoulEngine } from './services/GSoulEngine';
 import { PremiumAvatar } from './components/PremiumAvatar';
 import { Header } from './components/Header';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -71,12 +82,13 @@ import { ProjectModal } from './components/Modals/ProjectModal';
 import { SnippetsModal } from './components/Modals/SnippetsModal';
 import { SettingsPage } from './components/Pages/SettingsPage';
 import { WelcomeView } from './components/Pages/WelcomeView';
+import { DeveloperDocsPage } from './components/Pages/DeveloperDocsPage';
 import { speakText, stopSpeech } from './services/speechUtils';
 
 const DEFAULT_SETTINGS: AppSettings = {
-  mod: 'qwen/qwen3-coder-480b-a35b-instruct',
+  mod: 'gemini-2.5-flash',
   sys: DEFAULT_SYS,
-  tmp: 0.6,
+  tmp: 0.7,
   ctx: 12,
   maxTok: '',
   agent: false,
@@ -97,11 +109,20 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const DEFAULT_PROVIDERS: Provider[] = [
   {
+    id: 'google-builtin',
+    name: 'Google AI (Gemini)',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    apiKey: '',
+    model: 'gemini-2.5-flash',
+    isBuiltin: true,
+    pvType: 'google'
+  },
+  {
     id: 'nv-builtin',
     name: 'NVIDIA NIM (Built-in)',
     baseUrl: EP.nvidia,
     apiKey: '',
-    model: 'qwen/qwen3-coder-480b-a35b-instruct',
+    model: 'meta/llama-3.3-70b-instruct',
     isBuiltin: true,
     pvType: 'nvidia'
   },
@@ -110,9 +131,18 @@ const DEFAULT_PROVIDERS: Provider[] = [
     name: 'Groq LPU (Built-in)',
     baseUrl: EP.groq,
     apiKey: '',
-    model: 'groq/gpt-oss-120b',
+    model: 'llama-3.3-70b-versatile',
     isBuiltin: true,
     pvType: 'groq'
+  },
+  {
+    id: 'meta-builtin',
+    name: 'Meta AI (Model API)',
+    baseUrl: EP.meta,
+    apiKey: '',
+    model: 'muse-spark-1.2',
+    isBuiltin: true,
+    pvType: 'meta'
   }
 ];
 
@@ -146,12 +176,24 @@ export default function App() {
   const [providers, setProviders] = useState<Provider[]>(() => {
     try {
       const saved = localStorage.getItem('gbai_providers_v13');
+      let parsed: Provider[] | null = null;
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
+        const p = JSON.parse(saved);
+        if (Array.isArray(p)) parsed = p;
       }
+      const list = parsed || DEFAULT_PROVIDERS;
+      // Hydrate the built-in NVIDIA provider with the validated key (if any)
+      try {
+        const storedNvidiaKey = localStorage.getItem('gbai_nvidia_api_key');
+        if (storedNvidiaKey) {
+          return list.map(p =>
+            p.id === 'nv-builtin' && !p.apiKey?.trim()
+              ? { ...p, apiKey: storedNvidiaKey }
+              : p
+          );
+        }
+      } catch {}
+      return list;
     } catch {}
     return DEFAULT_PROVIDERS;
   });
@@ -164,10 +206,56 @@ export default function App() {
     setActiveProviderId(providerId);
     const list = customProvList || providers;
     const prov = list.find(p => p.id === providerId);
-    if (prov) {
-      const targetModel = prov.model || (prov as any).defaultModel || 'auto';
-      setSettings(prev => ({ ...prev, mod: targetModel }));
-    }
+    if (!prov) return;
+
+    setSettings(prev => {
+      // If the provider has an explicit `model` configured, use it.
+      const configured = prov.model || (prov as any).defaultModel;
+      if (configured && configured !== 'auto') {
+        return { ...prev, mod: configured };
+      }
+
+      // Otherwise, check whether the currently selected model is usable on
+      // this provider. If not, fall back to a sensible default instead of
+      // silently sending a model id that the new provider doesn't host.
+      const allModels: Record<string, any> = { ...MODELS, ...(prev.customModels || {}) };
+      const currentCfg = allModels[prev.mod];
+      const pType = (prov.pvType || '').toLowerCase();
+      const pId = prov.id.toLowerCase();
+
+      const providerSupportsCurrent = currentCfg
+        ? currentCfg.pv === pType || currentCfg.pv === pId
+        : false;
+
+      if (providerSupportsCurrent) {
+        return prev;
+      }
+
+      const fallback = (() => {
+        if (pType === 'groq' || pId === 'gq-builtin') return 'llama-3.3-70b-versatile';
+        if (pType === 'nvidia' || pId === 'nv-builtin') return 'meta/llama-3.3-70b-instruct';
+        if (pType === 'google' || pType === 'gemini') return 'gemini-2.5-flash';
+        if (pType === 'meta' || pId === 'meta-builtin') return 'muse-spark-1.2';
+        return prev.mod;
+      })();
+
+      return { ...prev, mod: fallback };
+    });
+  };
+
+  const handleToggleStarModel = (modelId: string, config: ModelConfig) => {
+    setSettings(prev => {
+      const currentCustom = { ...(prev.customModels || {}) };
+      if (currentCustom[modelId]) {
+        delete currentCustom[modelId];
+      } else {
+        currentCustom[modelId] = {
+          ...config,
+          isCustom: true
+        };
+      }
+      return { ...prev, customModels: currentCustom };
+    });
   };
 
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(() => {
@@ -216,6 +304,7 @@ export default function App() {
   // Modals state
   const [isSessionsModalOpen, setIsSessionsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
   const [isProviderPickerOpen, setIsProviderPickerOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -501,18 +590,40 @@ export default function App() {
             ...prev,
             agentMem: { ...(prev.agentMem || {}), [args.key]: args.value }
           }));
-          result = `💾 Saved to persistent memory: ["${args.key}"] = "${args.value}"`;
+          gSoulEngine.storeFact({
+            category: 'preference',
+            title: args.key,
+            content: String(args.value),
+            keywords: [args.key],
+            confidence: 1.0
+          }).catch(() => {});
+          result = `💾 Saved to GSoul persistent memory: ["${args.key}"] = "${args.value}"`;
           break;
         case 'recall':
           if (args.key) {
-            result = settings.agentMem?.[args.key] !== undefined
-              ? settings.agentMem[args.key]
-              : `Key "${args.key}" not found. Known keys: ${Object.keys(settings.agentMem || {}).join(', ') || 'none'}`;
+            const memoryVal = settings.agentMem?.[args.key];
+            if (memoryVal !== undefined) {
+              result = memoryVal;
+            } else {
+              const semanticMatches = await gSoulEngine.searchSemantic(args.key, 2);
+              if (semanticMatches.length > 0) {
+                result = `[GSoul Semantic Memory Match]\n` + semanticMatches.map(m => `• ${m.title}: ${m.content}`).join('\n');
+              } else {
+                result = `Key "${args.key}" not found in GSoul memory. Known keys: ${Object.keys(settings.agentMem || {}).join(', ') || 'none'}`;
+              }
+            }
           } else {
-            result = Object.keys(settings.agentMem || {}).length
-              ? JSON.stringify(settings.agentMem, null, 2)
+            const allFacts = await gSoulEngine.getAllFacts();
+            result = Object.keys(settings.agentMem || {}).length || allFacts.length
+              ? JSON.stringify({ localMemory: settings.agentMem, semanticFacts: allFacts.map(f => ({ key: f.title, value: f.content })) }, null, 2)
               : '(Persistent memory is currently empty)';
           }
+          break;
+        case 'modbus_controller':
+          result = await executeModbusTool(args);
+          break;
+        case 'termux_bridge':
+          result = await executeTermuxBridge(args);
           break;
         case 'make_chart':
           result = await makeChart(args);
@@ -550,13 +661,35 @@ export default function App() {
         case 'free_tts_stt':
           result = freeTTSSTT(args.text, args.lang || 'en');
           break;
+        case 'github_repo_explorer_v2':
+          result = await fetchGitHubTree(args, { githubPat: settings.githubPat, projectFiles });
+          break;
+        case 'github_code_reader':
+          result = await readGitHubFile(args, { githubPat: settings.githubPat, projectFiles });
+          break;
+        case 'github_code_search':
+          result = await searchGitHubCode(args, { githubPat: settings.githubPat, projectFiles });
+          break;
+        case 'github_publisher':
+          result = await publishToGitHub(args, { githubPat: settings.githubPat, projectFiles });
+          break;
+        case 'code_analyzer_pro':
+          result = analyzeCodePro(args);
+          break;
+        case 'web_repo_cloner_sim':
+          result = simulateCloneAndAnalyze({ files: args.files || projectFiles });
+          break;
         default:
-          // Check custom tools defined in settings executed safely in isolated Web Worker
-          const customToolMatch = settings.customTools?.find(ct => ct.id === fn);
-          if (customToolMatch) {
-            result = await executeSandboxedCustomTool(customToolMatch.code, args, settings);
-          } else {
-            result = `[Unknown tool: ${fn}]`;
+          try {
+            result = await executeAgentToolUniversal(fn, args, { githubPat: settings.githubPat, projectFiles });
+          } catch (e: any) {
+            // Check custom tools defined in settings executed safely in isolated Web Worker
+            const customToolMatch = settings.customTools?.find(ct => ct.id === fn);
+            if (customToolMatch) {
+              result = await executeSandboxedCustomTool(customToolMatch.code, args, settings);
+            } else {
+              result = `[Unknown tool: ${fn}] - ${e.message}`;
+            }
           }
       }
 
@@ -1094,6 +1227,7 @@ export default function App() {
         onExportChat={handleExportChat}
         onClearChat={handleClearChat}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenDocs={() => setIsDocsOpen(true)}
         onOpenProject={() => setIsProjectModalOpen(true)}
         projectCount={projectFiles.length}
         agentStatus={currentAgentBehavior.state}
@@ -1275,6 +1409,7 @@ export default function App() {
         currentModelId={settings.mod}
         onSelectModel={id => setSettings(prev => ({ ...prev, mod: id }))}
         customModels={settings.customModels}
+        onToggleStarModel={handleToggleStarModel}
         activeProvider={activeProvider}
         providers={providers}
         onUpdateProvider={updatedProv => {
@@ -1312,6 +1447,13 @@ export default function App() {
         onDeleteSnippet={idx => setSnippets(prev => prev.filter((_, i) => i !== idx))}
         onUseSnippet={code => handleSend(code)}
       />
+
+      {/* Interactive Developer Documentation & Hardware Hub */}
+      {isDocsOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-[#050505] animate-fadeIn">
+          <DeveloperDocsPage onBack={() => setIsDocsOpen(false)} />
+        </div>
+      )}
     </div>
   );
 }

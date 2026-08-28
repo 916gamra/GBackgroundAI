@@ -77,7 +77,7 @@ const PROVIDER_PRESETS: Array<{
     name: 'NVIDIA NIM',
     pvType: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1/chat/completions',
-    defaultModel: 'qwen/qwen3-coder-480b-a35b-instruct',
+    defaultModel: 'meta/llama-3.3-70b-instruct',
     desc: 'High-throughput enterprise AI microservices with 100+ open-source models.',
     docUrl: 'https://build.nvidia.com'
   },
@@ -85,7 +85,7 @@ const PROVIDER_PRESETS: Array<{
     name: 'Groq Cloud (LPU)',
     pvType: 'groq',
     baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    defaultModel: 'openai/gpt-oss-120b',
+    defaultModel: 'llama-3.3-70b-versatile',
     desc: 'Ultra-low latency inference engine running on Groq LPUs.',
     docUrl: 'https://console.groq.com'
   },
@@ -104,6 +104,14 @@ const PROVIDER_PRESETS: Array<{
     defaultModel: 'meta-llama/llama-3.3-70b-instruct',
     desc: 'Unified gateway to 200+ AI models across all top providers.',
     docUrl: 'https://openrouter.ai'
+  },
+  {
+    name: 'Meta AI (Model API)',
+    pvType: 'meta',
+    baseUrl: 'https://api.meta.ai/v1/chat/completions',
+    defaultModel: 'muse-spark-1.2',
+    desc: 'Meta Model API with Muse Spark reasoning models (muse-spark-1.2, muse-spark-1.1).',
+    docUrl: 'https://api.meta.ai'
   },
   {
     name: 'DeepSeek Official',
@@ -346,38 +354,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     }));
 
     try {
-      const endpoint = normalizeChatEndpoint(prov.baseUrl);
-      const testModel = (prov.model && prov.model !== 'auto') ? prov.model : (prov.pvType === 'nvidia' ? 'minimaxai/minimax-m3' : 'gpt-4o-mini');
+      const adapter = getAdapterForProvider(prov.pvType || prov.id || 'openai-compatible');
+      const health = await adapter.validate(key, prov.baseUrl);
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (key) {
-        headers['Authorization'] = `Bearer ${key}`;
-      }
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: testModel,
-          messages: [{ role: 'user', content: 'hi' }],
-          max_tokens: 2
-        })
-      });
-
-      if (res.ok || res.status === 200) {
+      if (health.status === 'connected') {
         setApiKeyValidations(prev => ({
           ...prev,
-          [prov.id]: { status: 'valid', message: 'API key verified successfully! Key is active and authorized' }
+          [prov.id]: { status: 'valid', message: health.message || 'API key verified successfully! Key is active and authorized' }
         }));
-      } else if (res.status === 401 || res.status === 403) {
-        setApiKeyValidations(prev => ({
-          ...prev,
-          [prov.id]: { status: 'invalid', message: 'Invalid API key or unauthorized (401 Unauthorized)' }
-        }));
+        // Auto fetch models after successful key validation
+        handleFetchModels(prov);
       } else {
         setApiKeyValidations(prev => ({
           ...prev,
-          [prov.id]: { status: 'valid', message: `Key accepted by provider (HTTP ${res.status})` }
+          [prov.id]: { status: 'invalid', message: health.message || 'Verification failed: Invalid API key' }
         }));
       }
     } catch (err: any) {
