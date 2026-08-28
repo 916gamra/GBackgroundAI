@@ -1,6 +1,10 @@
 {
-  "name": "GBackgroundAI — Beast v14",
-  "description": "Autonomous multi-model AI assistant (G-Core v14) with Dexie.js GSoulEngine persistence, ReAct Agent mode, Modbus PLC control, Termux hardware bridge, live Python/chart sandbox, and Samsung One UI mobile optimization.",
-  "requestFramePermissions": ["microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "GBackgroundAI \u2014 Beast v15",
+  "description": "Autonomous multi-model AI assistant (G-Core v15) with GSoulEngine Dexie persistence, ReAct agent mode with a trust-scored tool registry, Pyodide Python sandbox, Chart.js rendering, live preview, rolling conversation summaries and Samsung One UI mobile optimization.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

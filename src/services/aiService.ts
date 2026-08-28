@@ -1,20 +1,4 @@
-import { ModelConfig, ChatMessage, AppSettings, Provider, ProjectFile, GeneratedFile, AgentStepEvent } from '../types';
-import {
-  AGENT_TOOLS,
-  webSearch,
-  fetchURL,
-  runPython,
-  execJS,
-  mathEval,
-  wikiSearch,
-  jsonTool,
-  regexTest,
-  encodeText,
-  hashText,
-  toolNow,
-  agentAnalyze,
-  makeChart
-} from './agentTools';
+import { ModelConfig, ChatMessage, AppSettings, ProjectFile, GeneratedFile } from '../types';
 
 export const EP = {
   nvidia: 'https://integrate.api.nvidia.com/v1/chat/completions',
@@ -60,6 +44,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 1048576,
+    mo: 65536, // real max OUTPUT tokens (mk is the context window)
     cat: 'fast',
     desc: 'Google Gemini 2.5 Flash • 1M Context • Ultra Fast & Versatile',
     speed: 10,
@@ -73,6 +58,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 2097152,
+    mo: 65536, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'Google Gemini 2.5 Pro • SOTA Multimodal Reasoning & Complex Coding',
     speed: 8,
@@ -86,6 +72,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 1048576,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'fast',
     desc: 'Next-gen real-time Gemini model with 1M context',
     speed: 10,
@@ -99,6 +86,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 1048576,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'High precision 1M token context reasoning model',
     speed: 7,
@@ -112,6 +100,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 1048576,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'fast',
     desc: 'Lightweight fast response Gemini model',
     speed: 9,
@@ -127,6 +116,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 128000,
+    mo: 16384, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'OpenAI Omni flagship multimodal model',
     speed: 8,
@@ -140,6 +130,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 128000,
+    mo: 16384, // real max OUTPUT tokens (mk is the context window)
     cat: 'fast',
     desc: 'Fast, efficient, affordable OpenAI model',
     speed: 9,
@@ -153,6 +144,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 128000,
+    mo: 100000, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'OpenAI STEM reasoning model',
     speed: 7,
@@ -167,6 +159,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.6,
     p: 0.95,
     mk: 64000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'code',
     desc: 'DeepSeek V3 Chat API • SOTA Open Weights',
     speed: 8,
@@ -179,6 +172,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.6,
     p: 0.95,
     mk: 64000,
+    mo: 32768, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'DeepSeek R1 Reasoning engine with chain of thought',
     speed: 6,
@@ -193,6 +187,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 128000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'Ultra-fast Llama 3.3 70B running on Groq LPUs',
     speed: 10,
@@ -205,6 +200,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 128000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'fast',
     desc: 'Instant latency Llama 3.1 8B on Groq',
     speed: 10,
@@ -216,6 +212,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.9,
     mk: 32768,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'MoE 32K context with blazing Groq throughput',
     speed: 9,
@@ -229,6 +226,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 200000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'code',
     desc: 'Industry leader in coding, reasoning and agentic tasks',
     speed: 8,
@@ -242,6 +240,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 128000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'Open-weights flagship model across OpenRouter',
     speed: 8,
@@ -256,6 +255,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 1.0,
     p: 1.0,
     mk: 128000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'Meta Model API • Advanced internal reasoning model with developer instructions',
     speed: 8,
@@ -269,6 +269,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 1.0,
     p: 1.0,
     mk: 128000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'Meta Model API • High-speed reasoning model for chat and coding',
     speed: 9,
@@ -284,6 +285,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 1.0,
     p: 0.95,
     mk: 16384,
+    mo: 16384, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'DeepSeek V4 Pro high-performance flagship model via NVIDIA NIM',
     speed: 9,
@@ -297,6 +299,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.6,
     p: 0.95,
     mk: 64000,
+    mo: 32768, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'DeepSeek R1 full reasoning model running on NVIDIA NIM microservices',
     speed: 7,
@@ -310,6 +313,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.6,
     p: 0.95,
     mk: 128000,
+    mo: 16384, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'NVIDIA NIM enterprise microservice',
     speed: 8,
@@ -322,6 +326,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.6,
     p: 0.95,
     mk: 128000,
+    mo: 8192, // real max OUTPUT tokens (mk is the context window)
     cat: 'think',
     desc: 'NVIDIA custom tuned Nemotron 70B reasoning model',
     speed: 7,
@@ -335,6 +340,7 @@ export const MODELS: Record<string, ModelConfig> = {
     t: 0.7,
     p: 0.95,
     mk: 8192,
+    mo: 4096, // real max OUTPUT tokens (mk is the context window)
     cat: 'general',
     desc: 'Local Ollama instance model',
     speed: 8,
@@ -374,6 +380,63 @@ export function detectTask(text: string): 'code' | 'think' | 'fast' | 'write' | 
 export function countTokens(text: string): number {
   return Math.ceil((text || '').length / 3.5);
 }
+
+/**
+ * Per-provider ceiling for the `max_tokens` (output) parameter.
+ *
+ * BUG THIS FIXES: the old code sent `cfg.mk` as max_tokens. `mk` is the *context
+ * window* (e.g. 2,097,152 for Gemini 2.5 Pro, 128,000 for Groq), so providers
+ * answered `400 Invalid max_tokens` and every request looked like a broken API
+ * key. Defaults below are the documented output ceilings; unknown providers get
+ * a conservative 8k so a request never fails just because of this number.
+ */
+const PROVIDER_OUTPUT_CAP: Record<string, number> = {
+  google: 65536,
+  gemini: 65536,
+  groq: 8192,
+  nvidia: 16384,
+  openrouter: 65536,
+  deepseek: 32768,
+  meta: 8192,
+  'meta-ai': 8192,
+  ollama: 8192,
+  custom: 16384
+};
+
+export const DEFAULT_MAX_OUTPUT = 8192;
+export const HARD_MAX_OUTPUT = 65536;
+
+/**
+ * Resolve the output-token limit for a request.
+ * Precedence: explicit user override -> model config `mo` -> provider cap.
+ * Always clamped to [512, provider cap] and, when known, to the remaining
+ * room in the context window.
+ */
+export function resolveMaxOutputTokens(
+  modelId: string,
+  userOverride?: string | number | null,
+  customModels?: Record<string, ModelConfig>
+): number {
+  const cfg = { ...MODELS, ...(customModels || {}) }[modelId];
+  const cap = Math.min(
+    PROVIDER_OUTPUT_CAP[(cfg?.pv || '').toLowerCase()] ?? 8192,
+    HARD_MAX_OUTPUT
+  );
+  const wanted =
+    typeof userOverride === 'number'
+      ? userOverride
+      : parseInt(String(userOverride ?? ''), 10);
+
+  let value = Number.isFinite(wanted) && wanted > 0 ? wanted : cfg?.mo ?? Math.min(4096, cap);
+
+  if (Number.isFinite(value)) {
+    value = Math.max(512, Math.min(value, cap));
+    // Leave room for the prompt: never ask for more output than the window holds.
+    if (cfg?.mk) value = Math.max(512, Math.min(value, Math.floor(cfg.mk * 0.9)));
+  }
+  return value;
+}
+
 
 export function parseThink(text: string): { display: string; thinking: string } {
   let th = '';
@@ -416,53 +479,94 @@ export function normWire(m: ChatMessage): any {
   };
 }
 
+export interface BuildCtxOptions {
+  /** Extra read-only context injected by the app (live web search, GSoul recall…). */
+  extraSystem?: string;
+  /** Hard cap on how many characters of a single workspace file are injected. */
+  maxFileChars?: number;
+}
+
+/**
+ * Assemble the wire messages for one request.
+ *
+ * Fixes over the previous version:
+ *  - `settings.ctx` ("Context messages" in Settings) is finally honoured — it was
+ *    declared, exposed in the UI, persisted… and never read anywhere.
+ *  - the model config now also resolves user-starred/custom models (was MODELS-only,
+ *    so any custom model lost its context budget and fell back to 4096).
+ *  - workspace/artifact file bodies are truncated per file and in total: a single
+ *    3 MB pasted file used to blow up the system prompt and get a 400 from the API.
+ *  - history budget is derived from the real context window minus the output limit
+ *    instead of a magic 8000-token cap.
+ */
 export function buildCtx(
   history: ChatMessage[],
   settings: AppSettings,
   projectFiles: ProjectFile[],
   modelId: string,
   forceFlat: boolean = false,
-  generatedFiles: GeneratedFile[] = []
+  generatedFiles: GeneratedFile[] = [],
+  opts: BuildCtxOptions = {}
 ): any[] {
-  const cfg = MODELS[modelId];
+  const cfg = { ...MODELS, ...(settings.customModels || {}) }[modelId];
   let sys = settings.sys || DEFAULT_SYS;
 
   if (settings.agent && !forceFlat) {
     sys +=
-      '\n\n🤖 AGENT MODE ACTIVE: You have powerful tools (web_search, fetch_url, run_python, exec_js, make_chart, create_file, math_eval, wiki_search, json_tool, regex_test, encode, hash_text, now, remember, recall, analyze_text). Use them PROACTIVELY — execute code for accurate math, search for fresh facts, save persistent memory. Always give a concise final answer after using tools.';
+      '\n\n🤖 AGENT MODE ACTIVE: You have powerful tools (web_search, fetch_url, run_python, exec_js, make_chart, create_file, math_eval, wiki_search, json_tool, regex_test, encode, hash_text, now, remember, recall, analyze_text). Use them PROACTIVELY — execute code for accurate math, search for fresh facts, save persistent memory. Tools whose output is marked [SIMULATED DEMO TOOL] must be reported to the user as simulations, never as real data. Always give a concise final answer after using tools.';
   }
 
   if (cfg) {
-    sys += `\n\nModel: ${cfg.name} (${cfg.pv.toUpperCase()}). `;
+    sys += `\n\nModel: ${cfg.name} (${(cfg.pv || 'custom').toUpperCase()}). `;
     if (cfg.cat === 'code') sys += 'Excel at complete, working code. ';
     if (cfg.cat === 'think') sys += 'Deep logical reasoning and verification. ';
   }
   if (cfg?.sysPfx) sys = cfg.sysPfx + '\n' + sys;
 
-  if (projectFiles.length) {
+  // ── Workspace files (bounded) ────────────────────────────────────────────
+  const perFileCap = opts.maxFileChars ?? 14000;
+  const totalFileBudget = 60000;
+  let fileCharsUsed = 0;
+
+  const projectFileNames = new Set((projectFiles || []).map(pf => pf.name.toLowerCase()));
+  const extraArtifacts = (generatedFiles || []).filter(gf => !projectFileNames.has(gf.name.toLowerCase()));
+
+  const clip = (text: string) => {
+    const room = Math.max(0, totalFileBudget - fileCharsUsed);
+    const limit = Math.min(perFileCap, room);
+    if (text.length <= limit) {
+      fileCharsUsed += text.length;
+      return text;
+    }
+    fileCharsUsed += limit;
+    return text.slice(0, limit) + `\n…[truncated: file is ${text.length} chars, showing first ${limit}]`;
+  };
+
+  if (projectFiles?.length) {
     sys += '\n\n📁 Project Files:\n';
     projectFiles.forEach(f => {
-      sys += `\n[${f.name}]\n\`\`\`\n${f.content}\n\`\`\`\n`;
+      sys += `\n[${f.name}]\n\`\`\`\n${clip(f.content || '')}\n\`\`\`\n`;
     });
   }
 
-  // Include generated artifacts that aren't already listed in projectFiles
-  const projectFileNames = new Set(projectFiles.map(pf => pf.name.toLowerCase()));
-  const extraArtifacts = (generatedFiles || []).filter(gf => !projectFileNames.has(gf.name.toLowerCase()));
   if (extraArtifacts.length) {
     sys += '\n\n🎨 Created Artifacts / Workspace Files:\n';
     extraArtifacts.forEach(f => {
-      sys += `\n[Artifact: ${f.name} (${f.language || 'code'})]\n\`\`\`${f.language || ''}\n${f.content}\n\`\`\`\n`;
+      const lang = f.language || '';
+      sys += `\n[Artifact: ${f.name} (${lang || 'code'})]\n\`\`\`${lang}\n${clip(f.content || '')}\n\`\`\`\n`;
     });
   }
 
   if (settings.agent && settings.agentMem && Object.keys(settings.agentMem).length) {
-    sys += '\n\n💾 Your Persistent Memory:\n' + JSON.stringify(settings.agentMem, null, 2);
+    sys += '\n\n💾 Your Persistent Memory:\n' + JSON.stringify(settings.agentMem, null, 2).slice(0, 4000);
   }
 
   const msgs: any[] = [{ role: 'system', content: sys }];
   if (settings.summary) {
     msgs.push({ role: 'system', content: '📚 Earlier Summary:\n' + settings.summary });
+  }
+  if (opts.extraSystem) {
+    msgs.push({ role: 'system', content: opts.extraSystem });
   }
 
   // Group into atomic units: assistant + following tool results NEVER separated
@@ -487,11 +591,22 @@ export function buildCtx(
     countTokens(typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? m.tool_calls ?? '')) +
     (m.vi ? 300 : 0);
 
-  const budget = Math.min(cfg?.mk || 4096, 8000);
-  let used = countTokens(sys) + (settings.summary ? countTokens(settings.summary) : 0);
-  const picked: ChatMessage[][] = [];
+  // Budget = real context window minus what we let the model answer with,
+  // clamped so a phone never has to serialise megabytes of history.
+  // settings.ctx (the "Context messages" slider in Settings) caps how many
+  // history units are carried back — it was previously read nowhere.
+  const maxOut = resolveMaxOutputTokens(modelId, settings.maxTok, settings.customModels);
+  const windowTokens = cfg?.mk && cfg.mk > 1000 ? cfg.mk : 8192;
+  const budget = Math.max(2048, Math.min(Math.floor(windowTokens * 0.6) - maxOut, 64000));
 
-  for (let u = units.length - 1; u >= 0; u--) {
+  let used =
+    countTokens(sys) + (settings.summary ? countTokens(settings.summary) : 0) + (opts.extraSystem ? countTokens(opts.extraSystem) : 0);
+
+  // settings.ctx = how many messages (units) the user wants carried back.
+  const maxUnits = Number.isFinite(settings.ctx) && settings.ctx > 0 ? Math.floor(settings.ctx) : Infinity;
+
+  const picked: ChatMessage[][] = [];
+  for (let u = units.length - 1; u >= 0 && picked.length < maxUnits; u--) {
     const unitCost = units[u].reduce((acc, m) => acc + mSize(m), 0);
     if (picked.length && used + unitCost > budget) break;
     picked.unshift(units[u]);
@@ -524,6 +639,7 @@ export function buildCtx(
 
   return msgs.concat(picked.flat().map(normWire));
 }
+
 
 export async function fetchRetry(
   url: string,

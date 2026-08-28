@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Bot,
   Copy,
   Check,
   RotateCcw,
@@ -15,7 +14,9 @@ import {
 } from 'lucide-react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import hljs from 'highlight.js';
+// 'highlight.js/lib/common' ships the ~40 most used languages instead of the
+// full 190+ language set (which alone was ~1 MB of the shipped bundle).
+import hljs from 'highlight.js/lib/common';
 import { ChatMessage } from '../../types';
 import { MODELS, parseThink } from '../../services/aiService';
 import { PremiumAvatar } from '../PremiumAvatar';
@@ -70,6 +71,13 @@ export const AgentBubble: React.FC<AgentBubbleProps> = React.memo(({
 
   const msgId = isStreamingMode ? 'streaming-msg' : `agent-msg-${index}`;
   const isCopied = copiedId === msgId;
+
+  const downloadDataUrl = (dataUrl: string, filename: string) => {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    a.click();
+  };
 
   const handleDownloadFile = (content: string, filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
@@ -262,6 +270,33 @@ export const AgentBubble: React.FC<AgentBubbleProps> = React.memo(({
                 {thinkingText}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Inline media produced by tools during this turn (charts…) */}
+        {msg?.images && msg.images.length > 0 && (
+          <div className="mb-3.5 flex flex-col gap-2" dir="auto">
+            {msg.images.map((img, i) => (
+              <figure key={`img-${i}`} className="rounded-xl overflow-hidden border border-[#27272a] bg-[#09090b]">
+                <img
+                  src={img.url}
+                  alt={img.alt || 'Generated chart'}
+                  loading="lazy"
+                  className="w-full max-h-[420px] object-contain bg-[#121214]"
+                />
+                <figcaption className="px-3 py-1.5 text-[11px] font-mono text-[#a1a1aa] border-t border-[#27272a] flex items-center justify-between gap-2">
+                  <span className="truncate">{img.alt || 'Generated chart'}</span>
+                  <button
+                    onClick={() => downloadDataUrl(img.url, `${(img.alt || 'chart').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`)}
+                    className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-[10px] font-sans transition-colors cursor-pointer"
+                    title="Download PNG"
+                  >
+                    <Download size={11} />
+                    <span>PNG</span>
+                  </button>
+                </figcaption>
+              </figure>
+            ))}
           </div>
         )}
 

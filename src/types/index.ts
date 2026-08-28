@@ -7,25 +7,15 @@ export interface GeneratedFile {
   createdAt: string;
 }
 
-export interface UnifiedModel {
-  id: string;
-  name: string;
-  provider: string;
-  isSingleUrl: boolean;
-}
-
-export interface RouterConfig {
-  apiKey: string;
-  modelsUrl: string;
-  fallbackSingleUrl?: string;
-}
-
 export interface ModelConfig {
   name: string;
   pv: string; // 'nvidia' | 'groq' | 'custom' | or any custom provider ID
   t: number;
   p: number;
+  /** Total context window in tokens (input + output). NOT the output limit. */
   mk: number;
+  /** Max *output* tokens the provider accepts. Sent as max_tokens/max_completion_tokens. */
+  mo?: number;
   ex?: any;
   cat: 'code' | 'think' | 'general' | 'fast' | 'vision';
   desc: string;
@@ -75,6 +65,8 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   error?: boolean;
+  /** Inline media produced during the turn (e.g. agent `make_chart` PNG data URLs). */
+  images?: { url: string; alt?: string }[];
 }
 
 export interface Session {
@@ -146,11 +138,4 @@ export interface AgentStepEvent {
   resultPreview?: string;
 }
 
-export interface ValidationResult {
-  isValid: boolean;
-  errorType?: 'invalid_key' | 'network_error' | 'unknown';
-  message: string;
-}
-
-export * from './ProviderHealthTypes';
 

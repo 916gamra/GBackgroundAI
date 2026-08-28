@@ -1,172 +1,115 @@
 /**
- * Global Project Memory & In-Memory Code Explorer for Beast v15
- * Bundles local /src files at build time and manages runtime edits.
+ * Runtime project/workspace memory.
+ *
+ * Backs the self-inspection agent tools (`self_code_editor`, `list_local_files`,
+ * `web_repo_cloner_sim`) with the files the user actually added to the workspace
+ * plus anything the agent generated in this session.
+ *
+ * HISTORY / WHY THIS WAS REWRITTEN
+ * ---------------------------------------------------------------------------
+ * The previous implementation eagerly glob-imported the whole `src` tree with
+ * Vite's `import.meta.glob(..., { query: '?raw', eager: true })`, which inlined
+ * *the entire application source code* into the production JS bundle as strings
+ * (~+400 KB before gzip, and it also pulled in package-lock.json /
+ * vite.config.ts). Two concrete problems:
+ *   1. Every user downloaded the whole codebase just to chat.
+ *   2. The full source was readable by anyone from `window.__G_PROJECT_FILES__`.
+ *
+ * It is now a plain runtime store: files are registered by App.tsx whenever the
+ * workspace or artifact list changes, so the agent still reads/writes real files
+ * but nothing is shipped in the bundle.
  */
 
-declare global {
-  interface Window {
-    __G_PROJECT_FILES__?: Record<string, string>;
-  }
+export interface MemoryFile {
+  path: string;
+  content: string;
+  updatedAt: number;
+  origin: 'workspace' | 'artifact' | 'agent';
 }
 
-// Dynamically import all source files as raw text using Vite's eager glob
-let rawModules: Record<string, string> = {};
+const store = new Map<string, MemoryFile>();
 
-try {
-  rawModules = (import.meta as any).glob('/src/**/*.{ts,tsx,js,jsx,css,html,json,md,svg}', {
-    query: '?raw',
-    import: 'default',
-    eager: true
-  }) as Record<string, string>;
-} catch (e) {
-  console.warn('Vite raw glob import fallback:', e);
-}
-
-// Also include root configuration files if available
-try {
-  const rootModules = (import.meta as any).glob(['/*.{json,html,ts,js,config.js,config.ts}', '/public/**/*'], {
-    query: '?raw',
-    import: 'default',
-    eager: true
-  }) as Record<string, string>;
-  Object.assign(rawModules, rootModules);
-} catch {}
-
-/**
- * Initialize window.__G_PROJECT_FILES__ with normalized path keys
- */
-export function initProjectMemory(): Record<string, string> {
-  if (!window.__G_PROJECT_FILES__) {
-    window.__G_PROJECT_FILES__ = {};
-  }
-
-  // Populate from Vite eager glob
-  for (const [key, content] of Object.entries(rawModules)) {
-    if (typeof content === 'string') {
-      const cleanKey = key.startsWith('/') ? key.slice(1) : key;
-      window.__G_PROJECT_FILES__[cleanKey] = content;
-      window.__G_PROJECT_FILES__[key] = content; // keep both /src/App.tsx and src/App.tsx
-    }
-  }
-
-  return window.__G_PROJECT_FILES__;
-}
-
-/**
- * Get normalized project files map
- */
-export function getProjectMemory(): Record<string, string> {
-  if (!window.__G_PROJECT_FILES__ || Object.keys(window.__G_PROJECT_FILES__).length === 0) {
-    return initProjectMemory();
-  }
-  return window.__G_PROJECT_FILES__;
-}
-
-/**
- * Normalize file path for lookup
- */
+/** Normalize a user/LLM supplied path to the canonical key we store under. */
 export function normalizePathKey(filePath: string): string {
-  let clean = filePath.trim().replace(/\\/g, '/');
-  if (clean.startsWith('./')) clean = clean.slice(2);
+  let clean = (filePath || '').trim().replace(/\\/g, '/').replace(/^\.?\//,'');
+  while (clean.startsWith('../')) clean = clean.slice(3);
   return clean;
 }
 
+function put(path: string, content: string, origin: MemoryFile['origin']): string {
+  const key = normalizePathKey(path);
+  if (!key) return key;
+  const existing = store.get(key);
+  // Keep every alias resolvable without duplicating payloads in memory.
+  store.set(key, { path: key, content, updatedAt: Date.now(), origin: existing?.origin ?? origin });
+  return key;
+}
+
 /**
- * Retrieve content of a specific file from memory
+ * Replace the tracked workspace with the app's current project + artifact files.
+ * Called from App.tsx in an effect, so the agent always sees the live workspace.
  */
+export function syncWorkspace(files: Array<{ name: string; content: string }>, origin: 'workspace' | 'artifact' = 'workspace'): void {
+  const seen = new Set<string>();
+  for (const f of files || []) {
+    if (!f?.name) continue;
+    const key = put(f.name, f.content ?? '', origin);
+    seen.add(key);
+  }
+  // Drop stale workspace entries that were deleted by the user.
+  for (const [key, entry] of store) {
+    if (entry.origin === origin && !seen.has(key)) store.delete(key);
+  }
+}
+
+/** Register a single file written by the agent itself. */
+export function registerAgentFile(path: string, content: string): string {
+  return put(path, content ?? '', 'agent');
+}
+
+/** Full map (kept for API compatibility with `window.__G_PROJECT_FILES__` users). */
+export function getProjectMemory(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, entry] of store) {
+    out[key] = entry.content;
+    out[`/${key}`] = entry.content;
+  }
+  return out;
+}
+
 export function getProjectFileContent(filePath: string): { path: string; content: string; lines: number } | null {
-  const memory = getProjectMemory();
-  const clean = normalizePathKey(filePath);
-  const withSlash = clean.startsWith('/') ? clean : '/' + clean;
-  const withoutSlash = clean.startsWith('/') ? clean.slice(1) : clean;
-
-  const candidates = [
-    clean,
-    withoutSlash,
-    withSlash,
-    'src/' + withoutSlash,
-    '/src/' + withoutSlash
-  ];
-
-  for (const cand of candidates) {
-    if (typeof memory[cand] === 'string') {
-      const content = memory[cand];
-      return {
-        path: cand,
-        content,
-        lines: content.split('\n').length
-      };
-    }
-  }
-
-  // Case-insensitive fallback lookup
-  const lowerClean = withoutSlash.toLowerCase();
-  for (const [key, content] of Object.entries(memory)) {
-    const kLower = key.toLowerCase();
-    if (kLower === lowerClean || kLower.endsWith('/' + lowerClean) || kLower === 'src/' + lowerClean) {
-      return {
-        path: key,
-        content,
-        lines: content.split('\n').length
-      };
-    }
-  }
-
-  return null;
+  const key = normalizePathKey(filePath);
+  const direct = store.get(key);
+  const hit =
+    direct ??
+    // tolerate a `src/` prefix the model sometimes invents
+    store.get(key.replace(/^src\//, '')) ??
+    Array.from(store.values()).find(e => e.path.toLowerCase() === key.toLowerCase()) ??
+    null;
+  if (!hit) return null;
+  return { path: hit.path, content: hit.content, lines: hit.content.split('\n').length };
 }
 
-/**
- * Save / Patch file content in memory
- */
 export function setProjectFileContent(filePath: string, content: string): string {
-  const memory = getProjectMemory();
-  const clean = normalizePathKey(filePath);
-  const withoutSlash = clean.startsWith('/') ? clean.slice(1) : clean;
-
-  memory[withoutSlash] = content;
-  memory['/' + withoutSlash] = content;
-  if (!withoutSlash.startsWith('src/')) {
-    memory['src/' + withoutSlash] = content;
-  }
-
-  return withoutSlash;
+  return put(filePath, content, 'agent');
 }
 
-/**
- * List all project files in memory with size & lines
- */
 export function listProjectFilesMemory(filterQuery?: string, extensionFilter?: string) {
-  const memory = getProjectMemory();
-  const uniquePaths = new Set<string>();
-
-  const results: { path: string; lines: number; characters: number; sizeKb: string }[] = [];
-
   const q = (filterQuery || '').toLowerCase();
   const ext = (extensionFilter || '').toLowerCase().replace(/^\./, '');
 
-  for (const [key, content] of Object.entries(memory)) {
-    // Normalize to prevent duplicates (prefer relative path e.g. src/App.tsx)
-    const normKey = key.startsWith('/') ? key.slice(1) : key;
-    if (uniquePaths.has(normKey)) continue;
-    uniquePaths.add(normKey);
-
-    if (q && !normKey.toLowerCase().includes(q)) continue;
-    if (ext && !normKey.toLowerCase().endsWith('.' + ext)) continue;
-
-    const lines = content.split('\n').length;
-    const characters = content.length;
-    const sizeKb = (characters / 1024).toFixed(1) + ' KB';
-
-    results.push({
-      path: normKey,
-      lines,
-      characters,
-      sizeKb
-    });
-  }
-
-  return results.sort((a, b) => a.path.localeCompare(b.path));
+  return Array.from(store.values())
+    .filter(e => (!q || e.path.toLowerCase().includes(q)) && (!ext || e.path.toLowerCase().endsWith('.' + ext)))
+    .map(e => ({
+      path: e.path,
+      lines: e.content.split('\n').length,
+      characters: e.content.length,
+      sizeKb: (e.content.length / 1024).toFixed(1) + ' KB'
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-// Auto-initialize on module load
-initProjectMemory();
+/** No-op kept so older call sites (`initProjectMemory()`) keep compiling. */
+export function initProjectMemory(): Record<string, string> {
+  return getProjectMemory();
+}

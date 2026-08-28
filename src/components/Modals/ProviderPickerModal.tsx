@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Search, X, Check, Server, Plus, Settings2, Globe, Cpu, Zap, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, Search, Server, Settings2, X } from 'lucide-react';
 import { Provider } from '../../types';
 
 interface ProviderPickerModalProps {

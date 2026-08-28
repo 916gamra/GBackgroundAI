@@ -83,11 +83,56 @@ export async function* unifiedChatStream(request: ChatRequestPayload): AsyncGene
 
     if (!res.ok) {
       const errText = await res.text();
-      yield { type: 'error', message: `[HTTP ${res.status}] ${errText}` };
+      // Providers wrap real reasons in JSON ("error": {"message": ...}); surfacing the
+      // raw body forced users to read a JSON blob inside a chat bubble.
+      let reason = errText.trim();
+      try {
+        const parsed = JSON.parse(errText);
+        reason =
+          parsed?.error?.message ||
+          parsed?.message ||
+          parsed?.detail ||
+          (Array.isArray(parsed?.errors) ? parsed.errors.map((e: any) => e?.message || JSON.stringify(e)).join('; ') : '') ||
+          reason;
+      } catch {}
+      const hint =
+        res.status === 401 || res.status === 403
+          ? ' — the API key was rejected. Re-verify it in Settings → Providers.'
+          : res.status === 429
+          ? ' — rate limit / quota exhausted for this key. Retry in a moment or switch model.'
+          : res.status === 404
+          ? ' — endpoint or model id not found. Check the base URL and the model id.'
+          : res.status >= 500
+          ? ' — provider outage, the app already retried twice.'
+          : '';
+      yield { type: 'error', message: `[HTTP ${res.status}] ${String(reason).slice(0, 600)}${hint}` };
       return;
     }
 
     yield { type: 'message_start' };
+
+    // Some gateways (Ollama, OpenRouter-compatible shims, local proxies) ignore
+    // `stream: true` and answer with a plain JSON body. Without this branch the
+    // user saw a completely empty reply.
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('event-stream')) {
+      try {
+        const json: any = await res.json();
+        const choice = json?.choices?.[0];
+        const text = choice?.message?.content ?? json?.content ?? '';
+        const reasoning = choice?.message?.reasoning_content || choice?.message?.reasoning || '';
+        if (reasoning) yield { type: 'thinking_delta', text: String(reasoning) };
+        if (text) yield { type: 'content_delta', text: String(text) };
+        if (json?.usage) yield { type: 'usage', usage: json.usage };
+        if (choice?.message?.tool_calls?.length) {
+          yield { type: 'tool_start', toolCall: choice.message.tool_calls };
+        }
+        yield { type: 'message_end', finishReason: choice?.finish_reason || 'stop' };
+      } catch (e: any) {
+        yield { type: 'error', message: `Provider returned a non-stream response the app could not parse (${e?.message || 'unknown'}).` };
+      }
+      return;
+    }
 
     const reader = res.body?.getReader();
     if (!reader) {
@@ -187,10 +232,17 @@ export async function* unifiedChatStream(request: ChatRequestPayload): AsyncGene
     }
 
   } catch (err: any) {
-    if (err.name === 'AbortError') {
+    if (err?.name === 'AbortError') {
       yield { type: 'message_end', finishReason: 'abort' };
+    } else if (err?.name === 'TypeError') {
+      yield {
+        type: 'error',
+        message:
+          `Network request failed (${err.message}). In a browser this is usually CORS or the device being offline — ` +
+          `the provider must allow this origin, or route the call through the bundled FastAPI proxy (backend/).`
+      };
     } else {
-      yield { type: 'error', message: err.message || 'Unknown network error' };
+      yield { type: 'error', message: err?.message || 'Unknown network error' };
     }
   }
 }

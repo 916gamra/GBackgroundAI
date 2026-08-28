@@ -137,75 +137,6 @@ export class GoogleGeminiAdapter implements AIProviderAdapter {
     throw new Error(`Failed to fetch models: ${lastError}`);
   }
 
-  private getDefaultModels(): ModelInfo[] {
-    return [
-      {
-        id: 'gemini-2.5-flash',
-        name: 'Gemini 2.5 Flash',
-        providerId: this.id,
-        contextWindow: 1048576,
-        supportsVision: true,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: false,
-        category: 'fast',
-        source: 'remote',
-        description: 'Google Gemini 2.5 Flash • Ultra fast, 1M context'
-      },
-      {
-        id: 'gemini-2.5-pro',
-        name: 'Gemini 2.5 Pro',
-        providerId: this.id,
-        contextWindow: 2097152,
-        supportsVision: true,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: true,
-        category: 'think',
-        source: 'remote',
-        description: 'Google Gemini 2.5 Pro • Advanced multimodal reasoning & coding'
-      },
-      {
-        id: 'gemini-2.0-flash',
-        name: 'Gemini 2.0 Flash',
-        providerId: this.id,
-        contextWindow: 1048576,
-        supportsVision: true,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: false,
-        category: 'fast',
-        source: 'remote',
-        description: 'Google Gemini 2.0 Flash • Next-gen speed & intelligence'
-      },
-      {
-        id: 'gemini-1.5-pro',
-        name: 'Gemini 1.5 Pro',
-        providerId: this.id,
-        contextWindow: 1048576,
-        supportsVision: true,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: true,
-        category: 'general',
-        source: 'remote',
-        description: 'Google Gemini 1.5 Pro • High precision 1M token context'
-      },
-      {
-        id: 'gemini-1.5-flash',
-        name: 'Gemini 1.5 Flash',
-        providerId: this.id,
-        contextWindow: 1048576,
-        supportsVision: true,
-        supportsTools: true,
-        supportsStreaming: true,
-        supportsReasoning: false,
-        category: 'fast',
-        source: 'remote',
-        description: 'Google Gemini 1.5 Flash • High speed lightweight model'
-      }
-    ];
-  }
 
   private formatModelName(id: string): string {
     const parts = id.split('/');
@@ -216,8 +147,25 @@ export class GoogleGeminiAdapter implements AIProviderAdapter {
       .join(' ');
   }
 
+  static readonly DEFAULT_CHAT_ENDPOINT =
+    'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+
   streamChat(request: ChatRequestPayload): AsyncGenerator<StreamEvent, void, unknown> {
-    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+    // Was hard-coded to Google's endpoint, so a custom base URL saved in
+    // Settings (a corporate proxy, an AI Studio mirror, a different API version)
+    // was silently ignored for Gemini while it worked for every other provider.
+    const raw = (request.endpoint || '').trim();
+    const endpoint = raw ? GoogleGeminiAdapter.toChatCompletions(raw) : GoogleGeminiAdapter.DEFAULT_CHAT_ENDPOINT;
     return unifiedChatStream({ ...request, endpoint });
+  }
+
+  private static toChatCompletions(url: string): string {
+    let u = url.replace(/\/+$/, '');
+    // Native-style Google base (…/v1beta) → use the OpenAI-compatible path under it.
+    if (/generativelanguage\.googleapis\.com\/v1beta(\/openai)?$/.test(u)) {
+      return `${u.endsWith('/openai') ? u : u + '/openai'}/chat/completions`;
+    }
+    if (u.endsWith('/chat/completions')) return u;
+    return `${u}/chat/completions`;
   }
 }

@@ -1,4 +1,4 @@
-import { BotKeyframe, BotAnimationTrack, BotKeyframeEye } from './types';
+import { BotAnimationTrack, BotKeyframe } from './types';
 
 /**
  * Finds the active keyframe from an animation track for a given elapsed time in seconds.

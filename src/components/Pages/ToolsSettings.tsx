@@ -1,65 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import {
-  Wrench,
-  Search,
-  Check,
-  X,
-  Sparkles,
-  Plus,
-  Trash2,
-  Edit2,
-  Globe,
-  Link,
-  Terminal,
-  Code,
-  BarChart3,
-  FilePlus,
-  Calculator,
-  BookOpen,
-  Braces,
-  SpellCheck,
-  Binary,
-  Fingerprint,
-  Clock,
-  Brain,
-  Database,
-  ScanText,
-  HelpCircle,
-  Play,
-  RotateCcw,
-  Sliders,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  ShieldCheck,
-  CheckCircle2,
-  Info,
-  Cpu,
-  Smartphone,
-  FolderGit2,
-  FileCode,
-  CloudUpload,
-  ScanSearch,
-  Layers,
-  Hammer,
-  HeartPulse,
-  Bot,
-  HardDrive,
-  GitBranch,
-  Box,
-  Network,
-  Ruler,
-  Eye,
-  SearchCode,
-  MicVocal,
-  Users,
-  Workflow,
-  Activity,
-  Zap,
-  Atom
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Activity, Atom, BarChart3, Binary, BookOpen, Bot, Box, Braces, Brain, Calculator, Check, ChevronDown, ChevronUp, Clock, CloudUpload, Code, Cpu, Database, Edit2, Eye, FileCode, FilePlus, Fingerprint, FolderGit2, GitBranch, Globe, Hammer, HardDrive, HeartPulse, Info, Layers, Link, MicVocal, Network, Plus, Ruler, ScanSearch, ScanText, Search, SearchCode, ShieldCheck, Smartphone, Sparkles, SpellCheck, Terminal, Trash2, Users, Workflow, Wrench, X, Zap } from 'lucide-react';
 import { AppSettings, CustomToolConfig } from '../../types';
-import { BUILTIN_TOOL_CATALOG, ToolCatalogItem } from '../../services/agentTools';
+import { BUILTIN_TOOL_CATALOG } from '../../services/agentTools';
+import { isToolEnabled, isToolSimulated } from '../../services/toolPolicy';
 
 interface ToolsSettingsProps {
   localSettings: AppSettings;
@@ -116,7 +59,6 @@ const TOOL_ICON_MAP: Record<string, React.ReactNode> = {
 export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
   localSettings,
   setLocalSettings,
-  onApplyChanges,
   triggerToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,8 +79,8 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
   const handleToggleBuiltin = (toolId: string) => {
     setLocalSettings(prev => {
       const currentMap = { ...(prev.enabledTools || {}) };
-      // If undefined, default is true, so toggle becomes false
-      const currentVal = currentMap[toolId] !== undefined ? currentMap[toolId] : true;
+      // Effective default comes from the tool policy (real tools on, simulated off).
+      const currentVal = isToolEnabled(toolId, currentMap);
       currentMap[toolId] = !currentVal;
       return {
         ...prev,
@@ -163,18 +105,28 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
     });
   };
 
-  // Enable all tools
+  // Enable all *real* tools. Simulated/demo tools stay opt-in so the model is
+  // never handed 60 schemas of which ~25 fabricate their own "success" output.
   const handleEnableAll = () => {
     const newMap: Record<string, boolean> = {};
+    let simulatedCount = 0;
     BUILTIN_TOOL_CATALOG.forEach(t => {
+      if (isToolSimulated(t.id)) {
+        simulatedCount++;
+        return;
+      }
       newMap[t.id] = true;
     });
     setLocalSettings(prev => ({
       ...prev,
-      enabledTools: newMap,
+      enabledTools: { ...(prev.enabledTools || {}), ...newMap },
       customTools: (prev.customTools || []).map(ct => ({ ...ct, enabled: true }))
     }));
-    triggerToast('All AI Tools enabled successfully! 🚀');
+    triggerToast(
+      simulatedCount
+        ? `All ${Object.keys(newMap).length} real tools enabled — ${simulatedCount} simulated ones stay opt-in.`
+        : 'All AI Tools enabled successfully! 🚀'
+    );
   };
 
   // Disable all tools
@@ -298,9 +250,7 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
 
   // Stats
   const totalBuiltins = BUILTIN_TOOL_CATALOG.length;
-  const activeBuiltinsCount = BUILTIN_TOOL_CATALOG.filter(
-    t => (localSettings.enabledTools?.[t.id] !== undefined ? localSettings.enabledTools[t.id] : true)
-  ).length;
+  const activeBuiltinsCount = BUILTIN_TOOL_CATALOG.filter(t => isToolEnabled(t.id, localSettings.enabledTools)).length;
   const activeCustomsCount = customToolsList.filter(ct => ct.enabled).length;
   const totalActive = activeBuiltinsCount + activeCustomsCount;
   const totalCount = totalBuiltins + customToolsList.length;
@@ -536,10 +486,8 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {filteredBuiltins.map(tool => {
-              const isEnabled =
-                localSettings.enabledTools?.[tool.id] !== undefined
-                  ? localSettings.enabledTools[tool.id]
-                  : true;
+              const isEnabled = isToolEnabled(tool.id, localSettings.enabledTools);
+              const simulated = isToolSimulated(tool.id);
               const isExpanded = expandedToolId === tool.id;
 
               return (
@@ -563,6 +511,14 @@ export const ToolsSettings: React.FC<ToolsSettingsProps> = ({
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium bg-[#1c1c22] border border-[#2c2c36] text-[#a1a1aa]">
                             {tool.badge}
                           </span>
+                          {simulated && (
+                            <span
+                              className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400"
+                              title="This tool returns canned demo data - it does not contact a PLC, shell, camera or network. Disabled by default so the model never presents it as real."
+                            >
+                              ⚠ SIMULATED
+                            </span>
+                          )}
                         </div>
                         <span className="text-[10px] font-mono text-[var(--accent)]">{tool.id}()</span>
                       </div>

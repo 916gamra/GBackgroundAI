@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { ExternalLink, RotateCcw, X, Download, Code2, Sparkles } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Code2, Download, ExternalLink, RotateCcw, X } from 'lucide-react';
 
 interface LivePreviewProps {
   htmlCode: string;

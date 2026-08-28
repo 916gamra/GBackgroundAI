@@ -8,14 +8,11 @@ import {
   Shield,
   Copy,
   Check,
-  ChevronRight,
   Database,
   Search,
-  Sparkles,
   RefreshCw,
   Layers,
   ArrowLeft,
-  Sliders,
   Play
 } from 'lucide-react';
 import { gSoulEngine } from '../../services/GSoulEngine';

@@ -28,7 +28,37 @@ export const getBestArabicVoice = (): SpeechSynthesisVoice | null => {
   return premiumArabicVoice || voices.find(voice => voice.lang.startsWith('ar')) || voices[0] || null;
 };
 
-export const speakText = (text: string, onStart?: () => void, onEnd?: () => void) => {
+export interface SpeakOptions {
+  /** Exact SpeechSynthesis voice name (from Settings -> Voice); falls back to the best Arabic voice. */
+  voiceName?: string;
+  rate?: number;
+  pitch?: number;
+  lang?: string;
+}
+
+/** Resolve the requested voice once per call; Chrome only exposes names after voiceschanged. */
+export const findVoiceByName = (name?: string): SpeechSynthesisVoice | null => {
+  if (typeof window === 'undefined' || !window.speechSynthesis || !name) return null;
+  const voices = window.speechSynthesis.getVoices();
+  const target = name.toLowerCase();
+  return (
+    voices.find(v => v.name.toLowerCase() === target) ||
+    voices.find(v => v.name.toLowerCase().includes(target)) ||
+    null
+  );
+};
+
+export const listVoices = (): SpeechSynthesisVoice[] => {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return [];
+  return window.speechSynthesis.getVoices();
+};
+
+export const speakText = (
+  text: string,
+  onStart?: () => void,
+  onEnd?: () => void,
+  options: SpeakOptions = {}
+) => {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
   // Cancel any ongoing speech
@@ -40,16 +70,17 @@ export const speakText = (text: string, onStart?: () => void, onEnd?: () => void
   }
 
   const utterance = new SpeechSynthesisUtterance(cleaned);
-  
-  const bestVoice = getBestArabicVoice();
-  if (bestVoice) {
-    utterance.voice = bestVoice;
+
+  const chosen = findVoiceByName(options.voiceName) || getBestArabicVoice();
+  if (chosen) {
+    utterance.voice = chosen;
   } else {
-    utterance.lang = /[\u0600-\u06FF]/.test(cleaned) ? 'ar-EG' : 'en-US';
+    utterance.lang = options.lang || (/[\u0600-\u06FF]/.test(cleaned) ? 'ar-EG' : 'en-US');
   }
 
-  utterance.rate = 0.95;
-  utterance.pitch = 1.0;
+  // rate outside [0.1, 10] throws / silently breaks on some engines
+  utterance.rate = Math.min(10, Math.max(0.1, options.rate ?? 0.95));
+  utterance.pitch = Math.min(2, Math.max(0, options.pitch ?? 1.0));
 
   if (onStart) utterance.onstart = onStart;
   if (onEnd) {

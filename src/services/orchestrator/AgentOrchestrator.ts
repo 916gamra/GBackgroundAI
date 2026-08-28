@@ -49,6 +49,11 @@ export class AgentOrchestrator {
     let requestPayload = { ...ctx.requestTemplate };
     
     while (iteration < MAX_ITERS) {
+      // Stop pressed? Do not burn another completion or more tool side effects.
+      if (ctx.requestTemplate.signal?.aborted) {
+        return currentHistory;
+      }
+
       iteration++;
       
       // Update payload history with system prompt & project context preserved
@@ -124,6 +129,19 @@ export class AgentOrchestrator {
       // 3. Execute tools in parallel
       const results = await Promise.all(currentToolCalls.map(tc => ctx.executeTool(tc)));
 
+      // If the user hit Stop while tools were running, record their output for
+      // context continuity and unwind instead of asking the model to continue.
+      if (ctx.requestTemplate.signal?.aborted) {
+        for (let i = 0; i < results.length; i++) {
+          currentHistory.push({
+            role: 'tool',
+            tool_call_id: currentToolCalls[i].id,
+            content: String(results[i]).slice(0, 2000)
+          });
+        }
+        return currentHistory;
+      }
+
       // 4. Yield tool results and add to history
       for (let i = 0; i < results.length; i++) {
         const resStr = results[i];
@@ -135,7 +153,10 @@ export class AgentOrchestrator {
            ? `[SYSTEM VALIDATOR: The tool failed. Analyze the error and repair your approach:]\n` 
            : '';
 
-        const finalContent = validationPrefix + String(resStr).slice(0, 12000);
+        const raw = String(resStr);
+        const clipped =
+          raw.length > 12000 ? raw.slice(0, 12000) + `\n…[output truncated: ${raw.length} chars total]` : raw;
+        const finalContent = validationPrefix + clipped;
         
         currentHistory.push({
           role: 'tool',

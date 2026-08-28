@@ -1,7 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-import { Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import {
   ChatMessage,
   Session,
@@ -21,17 +18,17 @@ import {
   normalizeChatEndpoint,
   sanitizeApiKey,
   buildCtx,
-  fetchRetry,
   parseThink,
   detectTask,
   ROUTE_MAP,
-  countTokens
+  countTokens,
+  resolveMaxOutputTokens
 } from './services/aiService';
+import { generateSummary, buildLocalDigest } from './services/summarizeHistory';
 import { getAdapterForProvider } from './services/providers';
 import { StreamEvent } from './services/streamEngine';
 import { AgentOrchestrator } from './services/orchestrator/AgentOrchestrator';
 import {
-  AGENT_TOOLS,
   getActiveAgentTools,
   webSearch,
   fetchURL,
@@ -68,6 +65,10 @@ import {
   executeAgentToolUniversal
 } from './services/agentTools';
 import { gSoulEngine } from './services/GSoulEngine';
+import { annotateToolResult } from './services/toolPolicy';
+import { setJson, getJson, trimOldest } from './services/safeStorage';
+import { syncWorkspace } from './services/projectMemory';
+import { APP_VERSION_LABEL, APP_NAME, STORAGE } from './version';
 import { PremiumAvatar } from './components/PremiumAvatar';
 import { Header } from './components/Header';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -80,9 +81,9 @@ import { ModelPickerModal } from './components/Modals/ModelPickerModal';
 import { ProviderPickerModal } from './components/Modals/ProviderPickerModal';
 import { ProjectModal } from './components/Modals/ProjectModal';
 import { SnippetsModal } from './components/Modals/SnippetsModal';
-import { SettingsPage } from './components/Pages/SettingsPage';
+const SettingsPage = lazy(() => import('./components/Pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const DeveloperDocsPage = lazy(() => import('./components/Pages/DeveloperDocsPage').then(m => ({ default: m.DeveloperDocsPage })));
 import { WelcomeView } from './components/Pages/WelcomeView';
-import { DeveloperDocsPage } from './components/Pages/DeveloperDocsPage';
 import { speakText, stopSpeech } from './services/speechUtils';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -149,10 +150,8 @@ const DEFAULT_PROVIDERS: Provider[] = [
 export default function App() {
   // Main state
   const [sessions, setSessions] = useState<Session[]>(() => {
-    try {
-      const saved = localStorage.getItem('gbai_sessions_v13');
-      if (saved) return JSON.parse(saved);
-    } catch {}
+    const saved = getJson<Session[]>(STORAGE.sessions, []);
+    if (Array.isArray(saved) && saved.length) return saved;
     return [
       {
         id: `s-${Date.now()}`,
@@ -165,35 +164,38 @@ export default function App() {
 
   const [activeSessionId, setActiveSessionId] = useState<string>('welcome');
 
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const saved = localStorage.getItem('gbai_settings_v13');
-      if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-    } catch {}
-    return DEFAULT_SETTINGS;
-  });
+  const [settings, setSettings] = useState<AppSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    ...getJson<Partial<AppSettings>>(STORAGE.settings, {})
+  }));
 
   const [providers, setProviders] = useState<Provider[]>(() => {
     try {
-      const saved = localStorage.getItem('gbai_providers_v13');
+      const saved = localStorage.getItem(STORAGE.providers);
       let parsed: Provider[] | null = null;
       if (saved) {
         const p = JSON.parse(saved);
         if (Array.isArray(p)) parsed = p;
       }
       const list = parsed || DEFAULT_PROVIDERS;
-      // Hydrate the built-in NVIDIA provider with the validated key (if any)
-      try {
-        const storedNvidiaKey = localStorage.getItem('gbai_nvidia_api_key');
-        if (storedNvidiaKey) {
-          return list.map(p =>
-            p.id === 'nv-builtin' && !p.apiKey?.trim()
-              ? { ...p, apiKey: storedNvidiaKey }
-              : p
-          );
-        }
-      } catch {}
-      return list;
+
+      // Key hydration order: stored per-provider key -> validated NVIDIA key ->
+      // VITE_* env (dev-only convenience; Vite exposes VITE_-prefixed vars only).
+      const env = (import.meta as any).env || {};
+      const envKeys: Record<string, string> = {
+        'google-builtin': env.VITE_GEMINI_API_KEY || '',
+        'nv-builtin': env.VITE_NVIDIA_API_KEY || '',
+        'gq-builtin': env.VITE_GROQ_API_KEY || ''
+      };
+      const storedNvidiaKey = localStorage.getItem(STORAGE.nvidiaKey) || '';
+
+      return list.map(p => {
+        if (p.apiKey?.trim()) return p;
+        const fromEnv = envKeys[p.id];
+        if (fromEnv) return { ...p, apiKey: fromEnv };
+        if (p.id === 'nv-builtin' && storedNvidiaKey) return { ...p, apiKey: storedNvidiaKey };
+        return p;
+      });
     } catch {}
     return DEFAULT_PROVIDERS;
   });
@@ -258,18 +260,12 @@ export default function App() {
     });
   };
 
-  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(() => {
-    try {
-      const saved = localStorage.getItem('gbai_project_files_v13');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(
+    () => getJson<ProjectFile[]>(STORAGE.projectFiles, [])
+  );
   const [snippets, setSnippets] = useState<Snippet[]>(() => {
-    try {
-      const saved = localStorage.getItem('gbai_snippets_v13');
-      if (saved) return JSON.parse(saved);
-    } catch {}
+    const saved = getJson<Snippet[]>(STORAGE.snippets, []);
+    if (Array.isArray(saved) && saved.length) return saved;
     return [
       { title: 'Modern HTML/Tailwind Applet', code: 'Build a modern, interactive single-page web app in a single self-contained HTML file with Tailwind CSS and vanilla JS.' },
       { title: 'Python Data Analysis', code: 'Write a Python script using pandas and numpy to analyze numeric distributions and output statistics.' }
@@ -281,10 +277,8 @@ export default function App() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isArtifactsOpen, setIsArtifactsOpen] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>(() => {
-    try {
-      const saved = localStorage.getItem('gbai_artifacts_v13');
-      if (saved) return JSON.parse(saved);
-    } catch {}
+    const saved = getJson<GeneratedFile[]>(STORAGE.artifacts, []);
+    if (Array.isArray(saved) && saved.length) return saved;
     return [
       {
         id: 'demo-1',
@@ -324,6 +318,10 @@ export default function App() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const timerIntervalRef = useRef<any>(null);
+  // handleSend is recreated on every render (it closes over most of the app);
+  // children get this stable indirection instead so memoised bubbles don't
+  // re-render on every unrelated state change.
+  const handleSendRef = useRef<(text: string) => void>(() => {});
 
   // Active agent avatar dynamic behavior resolution
   const currentAgentBehavior = resolveAgentBehavior({
@@ -370,68 +368,63 @@ export default function App() {
     }
   }, [settings.accent, settings.mode]);
 
-  // Debounced persistence for heavy state objects to prevent frame stalls
+  // Set when a write hits the storage quota, so the user is told instead of
+  // silently losing the newest messages.
+  const [storageFull, setStorageFull] = useState(false);
+  const [flashMessage, setFlashMessage] = useState('');
+
+  // Debounced persistence for heavy state objects to prevent frame stalls.
+  // A quota error now trims the oldest entries and retries instead of only
+  // writing a console warning (which used to lose the newest turn silently).
   useEffect(() => {
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('gbai_sessions_v13', JSON.stringify(sessions));
-      } catch (e) {
-        console.warn('Failed to persist sessions:', e);
-      }
+      const ok = setJson(STORAGE.sessions, sessions, {
+        label: 'sessions',
+        recover: () => trimOldest(sessions, 0.25, 3)
+      });
+      setStorageFull(!ok);
     }, 400);
     return () => clearTimeout(timer);
   }, [sessions]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('gbai_settings_v13', JSON.stringify(settings));
-      } catch (e) {
-        console.warn('Failed to persist settings:', e);
-      }
+      setJson(STORAGE.settings, settings, { label: 'settings' });
     }, 400);
     return () => clearTimeout(timer);
   }, [settings]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('gbai_providers_v13', JSON.stringify(providers));
-    } catch (e) {
-      console.warn('Failed to persist providers:', e);
-    }
+    setJson(STORAGE.providers, providers, { label: 'providers' });
   }, [providers]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('gbai_snippets_v13', JSON.stringify(snippets));
-    } catch (e) {
-      console.warn('Failed to persist snippets:', e);
-    }
+    setJson(STORAGE.snippets, snippets, { label: 'snippets' });
   }, [snippets]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('gbai_project_files_v13', JSON.stringify(projectFiles));
-      } catch (e) {
-        console.warn('Failed to persist project files:', e);
-      }
+      setJson(STORAGE.projectFiles, projectFiles, {
+        label: 'project files',
+        recover: () => trimOldest(projectFiles, 0.4, 2)
+      });
     }, 400);
     return () => clearTimeout(timer);
   }, [projectFiles]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('gbai_artifacts_v13', JSON.stringify(generatedFiles));
-      } catch (e) {
-        console.warn('Failed to persist artifacts:', e);
-      }
+      setJson(STORAGE.artifacts, generatedFiles, {
+        label: 'artifacts',
+        // Artifacts largely duplicate projectFiles, so they are the cheapest to drop.
+        recover: () => trimOldest(generatedFiles, 0.4, 3)
+      });
     }, 400);
     return () => clearTimeout(timer);
   }, [generatedFiles]);
 
-  // Keyboard shortcut listener (ESC to close modals and stop generation)
+  // Keyboard shortcuts: ESC closes overlays / stops generation, Ctrl(⌘)+F focuses
+  // the in-conversation search that the header button opens.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -441,14 +434,23 @@ export default function App() {
         setIsProviderPickerOpen(false);
         setIsProjectModalOpen(false);
         setIsSnippetsModalOpen(false);
+        if (isSearchOpen) {
+          setIsSearchOpen(false);
+          setSearchQuery('');
+        }
         if (isBusy) {
           handleStopGeneration();
         }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setIsSearchOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isBusy]);
+  }, [isBusy, isSearchOpen]);
 
   const startTypingTimer = () => {
     const startTime = Date.now();
@@ -463,6 +465,15 @@ export default function App() {
     clearInterval(timerIntervalRef.current);
     timerIntervalRef.current = null;
   };
+
+  const handlePreviewCode = useCallback((code: string) => {
+    setPreviewHtml(code);
+    setIsPreviewOpen(true);
+  }, []);
+
+  const handleQuickSend = useCallback((text: string) => {
+    handleSendRef.current(text);
+  }, []);
 
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
@@ -486,6 +497,12 @@ export default function App() {
   // Autonomous Tool Runner for Agent Mode
   const executeAgentTool = async (tc: any): Promise<string> => {
     const fn = tc.function?.name || '';
+
+    // The user pressed Stop: do not start (or keep stacking) tool side effects.
+    if (abortControllerRef.current?.signal.aborted) {
+      return '[Cancelled by user before tool execution]';
+    }
+
     let args: any = {};
     try {
       args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : tc.function.arguments || {};
@@ -558,7 +575,7 @@ export default function App() {
             return [...prev, pf];
           });
 
-          if (fn.endsWith('.html') || fn.endsWith('.htm')) {
+          if (fn.toLowerCase().endsWith('.html') || fn.toLowerCase().endsWith('.htm')) {
             setPreviewHtml(ct);
           }
           result = `File "${fn}" created/updated in Artifacts & Project workspace (${ct.length} chars).`;
@@ -626,7 +643,10 @@ export default function App() {
           result = await executeTermuxBridge(args);
           break;
         case 'make_chart':
-          result = await makeChart(args);
+          result = await makeChart(args, (dataUrl, title) => {
+            // Render the chart into the chat instead of only telling the model it worked.
+            pendingChartsRef.current.push({ url: dataUrl, alt: title || 'Generated chart' });
+          });
           break;
         case 'analyze_text':
           result = agentAnalyze(args.text, args.task);
@@ -693,10 +713,13 @@ export default function App() {
           }
       }
 
+      // Simulated tools are prefixed with an explicit notice so the model can
+      // never pass a fabricated PLC/hardware payload off as real data.
+      const annotated = annotateToolResult(fn, String(result));
       setAgentSteps(prev =>
-        prev.map(s => (s.id === stepId ? { ...s, status: 'done', resultPreview: String(result).slice(0, 50) } : s))
+        prev.map(s => (s.id === stepId ? { ...s, status: 'done', resultPreview: annotated.slice(0, 50) } : s))
       );
-      return String(result);
+      return annotated;
     } catch (err: any) {
       setAgentSteps(prev =>
         prev.map(s => (s.id === stepId ? { ...s, status: 'error', resultPreview: err.message } : s))
@@ -767,6 +790,154 @@ export default function App() {
     }
   };
 
+  // Charts produced by the `make_chart` agent tool during the current turn.
+  const pendingChartsRef = useRef<{ url: string; alt: string }[]>([]);
+  // Guards against a second auto-summary starting while one is in flight.
+  const summarizingRef = useRef(false);
+  // How much of the transcript the last digest already covered.
+  const summarizeMarkRef = useRef(0);
+  // Latest settings/providers snapshot, so async callbacks never read a stale closure.
+  const settingsRef = useRef(settings);
+  const providersRef = useRef(providers);
+  const activeProviderIdRef = useRef(activeProviderId);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  useEffect(() => {
+    providersRef.current = providers;
+    activeProviderIdRef.current = activeProviderId;
+  }, [providers, activeProviderId]);
+
+  // Keep the agent-facing workspace registry in sync with the real files the
+  // user/agent have in the session (see services/projectMemory.ts).
+  useEffect(() => {
+    syncWorkspace(projectFiles.map(f => ({ name: f.name, content: f.content })), 'workspace');
+  }, [projectFiles]);
+
+  /**
+   * Shared tail for both the standard and the agent path: persist the reply,
+   * harvest artifacts, teach GSoul, speak it and roll the conversation summary.
+   */
+  const finalizeReply = async (args: {
+    sessionId: string;
+    history: ChatMessage[];
+    finalText: string;
+    thinking?: string;
+    modelId: string;
+    agent: boolean;
+    userText: string;
+    /**
+     * 'append'        – plain mode: nothing was stored yet.
+     * 'replace-last'  – agent mode: the orchestrator already pushed a bare copy of
+     *                   the final message, swap it for the enriched one instead of
+     *                   duplicating the assistant turn in the transcript.
+     */
+    mode?: 'append' | 'replace-last';
+  }) => {
+    const charts = pendingChartsRef.current.splice(0, pendingChartsRef.current.length);
+
+    const aiMessage: ChatMessage = {
+      role: 'assistant',
+      content: args.finalText,
+      think: args.thinking || undefined,
+      mod: args.modelId,
+      ts: Date.now(),
+      ...(args.agent ? { ag: true } : {}),
+      ...(charts.length ? { images: charts } : {})
+    };
+
+    const last = args.history[args.history.length - 1];
+    const replaceLast = args.mode === 'replace-last' && last?.role === 'assistant' && !last.tool_calls;
+    const nextHistory = replaceLast ? [...args.history.slice(0, -1), aiMessage] : [...args.history, aiMessage];
+
+    setSessions(prev => prev.map(s => (s.id === args.sessionId ? { ...s, history: nextHistory } : s)));
+
+    extractArtifacts(args.finalText || '');
+
+    // ── Long-term memory (was: never written outside the `remember` tool) ──
+    gSoulEngine
+      .recordInteraction({
+        sessionId: args.sessionId,
+        prompt: args.userText,
+        reply: args.finalText || '',
+        model: args.modelId,
+        agent: args.agent,
+        toolsUsed: args.history.filter(m => m.tool_calls).flatMap(m => (m.tool_calls || []).map(t => t.function?.name || ''))
+      })
+      .catch(() => {});
+    gSoulEngine.learnFromUserMessage(args.userText).catch(() => {});
+
+    // ── Auto-speak the answer when TTS is on in the composer/settings ──
+    const snap = settingsRef.current;
+    if (snap.tts && (args.finalText || '').trim()) {
+      speakText(args.finalText, undefined, undefined, {
+        voiceName: snap.ttsVoice || undefined,
+        rate: snap.ttsSpeed || 1
+      });
+    }
+
+    // ── Rolling summary (settings.autoSum / sumThreshold / sumKeep) ──
+    await maybeSummarize(nextHistory);
+  };
+
+  /**
+   * Compress older turns into `settings.summary` so long chats keep their thread.
+   * Takes the fresh history directly — reading `sessions` here would use the
+   * closure from the render that started the request and summarize a stale slice.
+   */
+  const maybeSummarize = async (history: ChatMessage[]) => {
+    const snap = settingsRef.current;
+    if (!snap.autoSum) return;
+    if (summarizingRef.current) return;
+
+    const threshold = Math.max(4, Number(snap.sumThreshold) || 20);
+    if (history.length < threshold) return;
+
+    const keep = Math.max(2, Number(snap.sumKeep) || 6);
+    const older = history.slice(0, Math.max(0, history.length - keep));
+    if (older.length < 2) return;
+
+    // Don't re-summarise every single turn once the threshold is passed — only
+    // when enough new material accumulated to be worth another request.
+    const lastMark = summarizeMarkRef.current;
+    if (older.length - lastMark < 6) return;
+    summarizeMarkRef.current = older.length;
+
+    // Chain the previous digest so the summary is rolling, not a snapshot of the
+    // last N messages only.
+    const carried: ChatMessage[] = snap.summary
+      ? [{ role: 'user', content: `[Summary of everything before this point]\n${snap.summary}` }]
+      : [];
+
+    const prov = providersRef.current.find(p => p.id === activeProviderIdRef.current) || providersRef.current[0];
+    const adapter = getAdapterForProvider(prov?.pvType || 'openai-compatible');
+    const cfgAll: Record<string, any> = { ...MODELS, ...(snap.customModels || {}) };
+    const cfgForSummary = cfgAll[snap.mod];
+    const endpoint = normalizeChatEndpoint(prov?.baseUrl || EP.nvidia);
+    const apiKey = sanitizeApiKey(prov?.apiKey || '');
+    if (!apiKey) return; // never spend a request we cannot authenticate
+
+    summarizingRef.current = true;
+    try {
+      const digest =
+        (await generateSummary([...carried, ...older], {
+          adapter,
+          endpoint,
+          apiKey,
+          model: cfgForSummary?.mid || snap.mod,
+          maxTokens: 700
+        })) || buildLocalDigest(older);
+
+      if (!digest) return;
+      setSettings(prev => {
+        if (prev.summary === digest) return prev;
+        return { ...prev, summary: digest };
+      });
+    } finally {
+      summarizingRef.current = false;
+    }
+  };
+
   // Main Send handler
   const handleSend = async (
     text: string,
@@ -775,21 +946,30 @@ export default function App() {
     overrideHistory?: ChatMessage[]
   ) => {
     if (isBusy) return;
+    const body = (text || '').trim();
+    if (!body && !visionFile) return;
+
+    // Stop any playback from the previous answer before generating a new one.
+    stopSpeech();
+    pendingChartsRef.current = [];
 
     let targetSId = overrideSessionId || activeSessionId;
     let targetSession = sessions.find(s => s.id === targetSId);
 
-    if (!targetSession || targetSId === 'welcome') {
+    if (!targetSession) {
+      // Reuse an id the caller already announced (WelcomeView quick prompts create a
+      // session and pass its id in) instead of minting a second, empty one.
+      const newId = targetSId && targetSId !== 'welcome' ? targetSId : `s-${Date.now()}`;
       const newS: Session = {
-        id: `s-${Date.now()}`,
-        title: text.slice(0, 30) + (text.length > 30 ? '…' : ''),
+        id: newId,
+        title: body.slice(0, 30) + (body.length > 30 ? '…' : ''),
         date: new Date().toISOString(),
         history: []
       };
       targetSession = newS;
-      targetSId = newS.id;
-      setSessions(prev => [newS, ...prev]);
-      setActiveSessionId(newS.id);
+      targetSId = newId;
+      setSessions(prev => (prev.some(s => s.id === newId) ? prev : [newS, ...prev]));
+      setActiveSessionId(newId);
     }
 
     let targetModelId = settings.mod;
@@ -865,6 +1045,34 @@ export default function App() {
     endpoint = normalizeChatEndpoint(endpoint);
     const cleanApiKey = sanitizeApiKey(rawApiKey);
 
+    if (!cleanApiKey) {
+      setHasRecentError(true);
+      setTimeout(() => setHasRecentError(false), 4000);
+      setSessions(prev =>
+        prev.map(s =>
+          s.id === targetSId
+            ? {
+                ...s,
+                history: [
+                  ...currentHistory,
+                  {
+                    role: 'assistant',
+                    content:
+                      '⚠️ No API key configured for this provider.\n\nOpen Settings → Providers, paste a key and press Verify — the app will not guess one for you.',
+                    error: true,
+                    mod: targetModelId,
+                    ts: Date.now()
+                  }
+                ]
+              }
+            : s
+        )
+      );
+      setIsBusy(false);
+      stopTypingTimer();
+      return;
+    }
+
     try {
       // ══════ SMART TASK ROUTING & ORCHESTRATION ══════
       let useAgent = settings.agent;
@@ -872,23 +1080,51 @@ export default function App() {
 
       if (settings.taskRoute && !visionFile) {
         const taskRoute = AgentOrchestrator.classifyTask(text);
-        
         if (taskRoute.requiresAgent) {
           useAgent = true;
         }
       }
 
-      const activeToolsList = getActiveAgentTools(settings.enabledTools, settings.customTools);
+      const activeToolsList = getActiveAgentTools(settings.enabledTools, settings.customTools, settings);
       const adapter = getAdapterForProvider(activeProvider?.pvType || 'openai-compatible');
+
+      // ══════ CONTEXT AUGMENTATION (GSoul memory + optional live web search) ══════
+      let extraSystem = '';
+      try {
+        const memory = await gSoulEngine.buildMemoryContext(text);
+        if (memory) extraSystem += memory + '\n\n';
+      } catch {}
+
+      // The composer's "Web search" toggle used to be decorative: the flag was
+      // read only by the agent tool. Now it actually retrieves fresh sources and
+      // injects them, in both plain and agent mode.
+      if (settings.webSearch && !visionFile) {
+        setTypingStatus('🔎 Searching the web...');
+        try {
+          const hasSerper = !!settings.serper?.trim();
+          const hits = await webSearch(text.slice(0, 200), settings.serper);
+          if (hits && !hits.startsWith('❌')) {
+            extraSystem += hasSerper
+              ? `🔎 LIVE WEB SEARCH RESULTS for this turn (cite them when relevant):\n${hits.slice(0, 6000)}`
+              : `🔎 WEB RESULTS (Wikipedia fallback only — no Serper key configured, so this is encyclopedic context, not fresh news). Do not claim this is live news:\n${hits.slice(0, 6000)}`;
+          }
+        } catch (e: any) {
+          extraSystem += `🔎 Web search requested but failed: ${e?.message || 'unknown error'}`;
+        }
+      }
 
       const requestPayload = {
         endpoint,
         apiKey: cleanApiKey,
         model: cfg?.mid || finalTargetModelId,
-        messages: buildCtx(currentHistory, settings, projectFiles, finalTargetModelId, false, generatedFiles),
+        messages: buildCtx(currentHistory, settings, projectFiles, finalTargetModelId, false, generatedFiles, {
+          extraSystem
+        }),
         temperature: settings.tmp ?? cfg?.t ?? 0.7,
         topP: cfg?.p || 1,
-        maxTokens: parseInt(settings.maxTok) || cfg?.mk || 4096,
+        // NOTE: must be an OUTPUT limit — cfg.mk is the context window and made
+        // providers answer 400 Invalid max_tokens for most models.
+        maxTokens: resolveMaxOutputTokens(finalTargetModelId, settings.maxTok, settings.customModels),
         signal: abortControllerRef.current.signal,
         tools: useAgent && activeToolsList.length > 0 ? activeToolsList : undefined
       };
@@ -907,13 +1143,16 @@ export default function App() {
           executeTool: executeAgentTool,
           adapter,
           requestTemplate: requestPayload,
-          buildMessages: (hist: any[]) => buildCtx(hist, settings, projectFiles, finalTargetModelId, false, generatedFiles),
+          buildMessages: (hist: any[]) =>
+            buildCtx(hist, settings, projectFiles, finalTargetModelId, false, generatedFiles, { extraSystem }),
           maxIterations: 8
         };
 
         const generator = AgentOrchestrator.runAgentLoop(ctx);
         let result = await generator.next();
         let currentLoopHistory = [...currentHistory];
+        let agentText = '';
+        let agentThinking = '';
 
         while (!result.done) {
            const event = result.value as StreamEvent;
@@ -921,9 +1160,11 @@ export default function App() {
               throw new Error(event.message || 'Agent error');
            }
            if (event.type === 'thinking_delta') {
+              agentThinking += event.text || '';
               setStreamingThinking(prev => prev + (event.text || ''));
            }
            if (event.type === 'content_delta') {
+              agentText += event.text || '';
               setStreamingContent(prev => {
                 const newContent = prev + (event.text || '');
                 checkHtmlCodeForPreview(newContent);
@@ -935,15 +1176,23 @@ export default function App() {
            }
            result = await generator.next();
         }
-        
+
         // When done, result.value contains the returned history
         if (Array.isArray(result.value)) {
            currentLoopHistory = result.value;
         }
 
-        setSessions(prev =>
-          prev.map(s => (s.id === targetSId ? { ...s, history: currentLoopHistory } : s))
-        );
+        // Agent turns previously produced no model tag and no artifacts.
+        await finalizeReply({
+          sessionId: targetSId,
+          history: currentLoopHistory,
+          finalText: agentText,
+          thinking: agentThinking,
+          modelId: finalTargetModelId,
+          agent: true,
+          userText: text,
+          mode: 'replace-last'
+        });
 
         setIsJustFinished(true);
         setTimeout(() => setIsJustFinished(false), 3200);
@@ -954,7 +1203,7 @@ export default function App() {
         setStreamingContent('');
         setStreamingThinking('');
         setTypingStatus('Synthesizing...');
-        
+
         let fullText = '';
         let fullThinking = '';
 
@@ -970,8 +1219,7 @@ export default function App() {
              fullText += event.text;
              const { display, thinking } = parseThink(fullText);
              if (thinking) {
-                fullThinking += thinking;
-                setStreamingThinking(fullThinking);
+                setStreamingThinking(fullThinking + thinking);
              }
              setStreamingContent(display);
              checkHtmlCodeForPreview(display);
@@ -979,20 +1227,16 @@ export default function App() {
         }
 
         const { display: finalDisplay, thinking: finalThinking } = parseThink(fullText);
-        const finalAiMessage: ChatMessage = {
-          role: 'assistant',
-          content: finalDisplay || fullText,
-          think: finalThinking || fullThinking,
-          mod: finalTargetModelId,
-          ts: Date.now()
-        };
 
-        checkHtmlCodeForPreview(finalAiMessage.content || '');
-        extractArtifacts(finalAiMessage.content || '');
-
-        setSessions(prev =>
-          prev.map(s => (s.id === targetSId ? { ...s, history: [...currentHistory, finalAiMessage] } : s))
-        );
+        await finalizeReply({
+          sessionId: targetSId,
+          history: currentHistory,
+          finalText: finalDisplay || fullText,
+          thinking: fullThinking || finalThinking,
+          modelId: finalTargetModelId,
+          agent: false,
+          userText: text
+        });
 
         setIsJustFinished(true);
         setTimeout(() => setIsJustFinished(false), 3200);
@@ -1011,6 +1255,9 @@ export default function App() {
         setSessions(prev =>
           prev.map(s => (s.id === targetSId ? { ...s, history: [...currentHistory, errorMsg] } : s))
         );
+        gSoulEngine
+          .addEpisode({ sessionId: targetSId, type: 'error', summary: err.message?.slice(0, 300) || 'Generation failed' })
+          .catch(() => {});
       }
     } finally {
       setIsBusy(false);
@@ -1022,6 +1269,16 @@ export default function App() {
       abortControllerRef.current = null;
     }
   };
+
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
+
+  // A new/cleared conversation must not inherit the previous summary state.
+  useEffect(() => {
+    summarizeMarkRef.current = 0;
+    setAgentSteps([]);
+  }, [activeSessionId]);
 
   const handleCreateSession = () => {
     const newId = `s-${Date.now()}`;
@@ -1053,30 +1310,33 @@ export default function App() {
     const target = sessions.find(s => s.id === id);
     if (target) {
       // Add to trash for restore
-      const trash = JSON.parse(localStorage.getItem('gbai_trash_v13') || '[]');
+      const trash = JSON.parse(localStorage.getItem(STORAGE.trash) || '[]');
       trash.push(target);
-      localStorage.setItem('gbai_trash_v13', JSON.stringify(trash.slice(-15)));
+      localStorage.setItem(STORAGE.trash, JSON.stringify(trash.slice(-15)));
     }
     const next = sessions.filter(s => s.id !== id);
     setSessions(next);
     if (activeSessionId === id) {
-      setActiveSessionId(next[0].id);
+      // next can legitimately be empty right after a bulk delete — fall back to
+      // the welcome screen instead of reading .id off undefined and crashing.
+      setActiveSessionId(next[0]?.id ?? 'welcome');
     }
   };
 
   const handleRestoreTrash = () => {
-    const trash = JSON.parse(localStorage.getItem('gbai_trash_v13') || '[]');
+    const trash = JSON.parse(localStorage.getItem(STORAGE.trash) || '[]');
     if (!trash.length) {
       alert('Trash is empty.');
       return;
     }
     const restored = trash.pop();
-    localStorage.setItem('gbai_trash_v13', JSON.stringify(trash));
+    localStorage.setItem(STORAGE.trash, JSON.stringify(trash));
     setSessions(prev => [restored, ...prev]);
     setActiveSessionId(restored.id);
   };
 
   const handleClearChat = () => {
+    if (!activeSession) return;
     if (window.confirm('Are you sure you want to clear this conversation?')) {
       setSessions(prev =>
         prev.map(s => (s.id === activeSession.id ? { ...s, history: [] } : s))
@@ -1085,8 +1345,8 @@ export default function App() {
   };
 
   const handleExportChat = () => {
-    if (!activeSession.history.length) return;
-    let markdown = `# GBackgroundAI Beast v13 — ${activeSession.title}\n\n`;
+    if (!activeSession || !activeSession.history.length) return;
+    let markdown = `# ${APP_NAME} ${APP_VERSION_LABEL} — ${activeSession.title}\n\n`;
     activeSession.history.forEach(m => {
       if (m.role === 'user') {
         markdown += `### 👤 User\n${m.content}\n\n`;
@@ -1106,6 +1366,7 @@ export default function App() {
   };
 
   const handleEditResend = (index: number, newText: string) => {
+    if (!activeSession) return;
     const trimmedHistory = activeSession.history.slice(0, index);
     setSessions(prev =>
       prev.map(s => (s.id === activeSession.id ? { ...s, history: trimmedHistory } : s))
@@ -1127,6 +1388,7 @@ export default function App() {
   };
 
   const handleRetry = () => {
+    if (!activeSession) return;
     const lastUserIndex = [...activeSession.history].reverse().findIndex(m => m.role === 'user');
     if (lastUserIndex === -1) return;
     const realIndex = activeSession.history.length - 1 - lastUserIndex;
@@ -1139,18 +1401,54 @@ export default function App() {
     handleSend(lastUserMsg.content || '', undefined, activeSession.id, trimmedHistory);
   };
 
-  const handleSpeak = (text: string) => {
-    speakText(text);
-  };
+  const handleSpeak = useCallback((text: string) => {
+    const snap = settingsRef.current;
+    speakText(text, undefined, undefined, {
+      voiceName: snap.ttsVoice || undefined,
+      rate: snap.ttsSpeed || 1
+    });
+  }, []);
+
+  const MAX_CONTEXT_FILE_BYTES = 1.5 * 1024 * 1024; // files are inlined into the prompt
+  const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
   const handleAddProjectFiles = (fileList: FileList) => {
+    const skipped: string[] = [];
     Array.from(fileList).forEach(file => {
-      if (file.size > 5 * 1024 * 1024) return;
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        skipped.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB > limit)`);
+        return;
+      }
+
+      const isImage = file.type.startsWith('image/');
       const reader = new FileReader();
+
+      reader.onerror = () => skipped.push(file.name);
       reader.onload = e => {
-        const content = (e.target?.result as string) || '';
+        const raw = (e.target?.result as string) || '';
         const ext = file.name.split('.').pop()?.toLowerCase() || '';
-        const lang = ext === 'tsx' || ext === 'ts' ? 'typescript' : ext === 'jsx' || ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : ext === 'html' || ext === 'htm' ? 'html' : ext === 'css' ? 'css' : ext === 'json' ? 'json' : 'text';
+
+        if (isImage) {
+          // Images belong in the artifacts panel as previews — reading them as
+          // text used to store binary garbage in the prompt.
+          setGeneratedFiles(prev => [
+            {
+              id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              name: file.name,
+              type: 'image',
+              content: raw,
+              createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            },
+            ...prev.filter(f => f.name.toLowerCase() !== file.name.toLowerCase())
+          ]);
+          return;
+        }
+
+        const truncated = file.size > MAX_CONTEXT_FILE_BYTES;
+        const content = truncated
+          ? raw.slice(0, MAX_CONTEXT_FILE_BYTES) + '\n…[file truncated for context; open the original on disk]'
+          : raw;
+        const lang = ext === 'tsx' || ext === 'ts' ? 'typescript' : ext === 'jsx' || ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : ext === 'html' || ext === 'htm' ? 'html' : ext === 'css' ? 'css' : ext === 'json' ? 'json' : ext === 'md' ? 'markdown' : 'text';
 
         setProjectFiles(prev => [
           ...prev.filter(f => f.name.toLowerCase() !== file.name.toLowerCase()),
@@ -1169,17 +1467,31 @@ export default function App() {
           ...prev.filter(f => f.name.toLowerCase() !== file.name.toLowerCase())
         ]);
       };
-      reader.readAsText(file);
+
+      if (isImage) reader.readAsDataURL(file);
+      else reader.readAsText(file);
     });
+
+    if (skipped.length) {
+      setFlashMessage(`⚠️ Skipped ${skipped.length} file(s): ${skipped.join(', ').slice(0, 160)}`);
+      setTimeout(() => setFlashMessage(''), 6000);
+    }
   };
 
-  const totalSessionTokens = activeSession.history.reduce(
-    (acc, m) => acc + countTokens(typeof m.content === 'string' ? m.content : ''),
-    0
+  const totalSessionTokens = useMemo(
+    () =>
+      (activeSession?.history || []).reduce(
+        (acc, m) => acc + countTokens(typeof m.content === 'string' ? m.content : ''),
+        0
+      ),
+    [activeSession?.history]
   );
 
   const handleExportProject = async () => {
     if (!projectFiles.length) return;
+    // jszip + file-saver are ~100 KB and only needed when someone presses Export,
+    // so they are fetched on demand instead of blocking app start.
+    const [{ default: JSZip }, { saveAs }] = await Promise.all([import('jszip'), import('file-saver')]);
     const zip = new JSZip();
     projectFiles.forEach(f => {
       zip.file(f.name, f.content);
@@ -1188,10 +1500,8 @@ export default function App() {
     saveAs(content, 'project-workspace.zip');
   };
 
-  const storageUsageBytes = JSON.stringify(sessions).length * 2;
-
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#050505] text-[#f4f4f5] overflow-hidden select-none">
+    <div className="h-screen w-screen flex flex-col bg-[#050505] text-[#f4f4f5] overflow-hidden">
       {/* Splash Screen */}
       {showSplashScreen && (
         <div className="fixed inset-0 z-[100] bg-[#050508] flex flex-col items-center justify-center gap-6 animate-fadeIn transition-opacity duration-500">
@@ -1204,7 +1514,7 @@ export default function App() {
           </div>
           <div className="flex flex-col items-center gap-1.5 text-center">
             <h1 className="text-2xl font-black text-white tracking-wider">GBG AI STUDIO</h1>
-            <span className="text-xs text-[#a1a1aa] font-mono tracking-widest uppercase">Beast v13 • Next Generation AI</span>
+            <span className="text-xs text-[#a1a1aa] font-mono tracking-widest uppercase">{APP_VERSION_LABEL} • Next Generation AI</span>
           </div>
           <div className="flex items-center gap-2 mt-2">
             <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -1218,7 +1528,16 @@ export default function App() {
       <Header
         onToggleSessions={() => setIsSessionsModalOpen(true)}
         onGoWelcome={() => setActiveSessionId('welcome')}
-        onToggleSearch={() => setIsSearchOpen(prev => !prev)}
+        onToggleSearch={() => {
+          setIsSearchOpen(prev => {
+            if (prev) setSearchQuery('');
+            return !prev;
+          });
+        }}
+        isSearchOpen={isSearchOpen}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        searchDisabled={activeSessionId === 'welcome'}
         onTogglePreview={() => setIsPreviewOpen(prev => !prev)}
         isPreviewOpen={isPreviewOpen}
         onToggleArtifacts={() => setIsArtifactsOpen(prev => !prev)}
@@ -1233,9 +1552,32 @@ export default function App() {
         agentStatus={currentAgentBehavior.state}
       />
 
+      {/* Transient notice (skipped attachments etc.) */}
+      {flashMessage && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-[130px] z-[60] px-4 py-2 rounded-2xl bg-[#18181b] border border-amber-500/40 text-amber-200 text-[11px] font-mono shadow-2xl animate-fadeIn max-w-[92vw] select-text">
+          {flashMessage}
+        </div>
+      )}
+
+      {/* Storage pressure warning: the user must learn that saves are being trimmed */}
+      {storageFull && (
+        <div className="fixed left-0 right-0 z-40 mt-[54px] px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 backdrop-blur flex items-center gap-2 text-[11px] text-amber-200 animate-fadeIn">
+          <span className="flex-1 select-text">
+            ⚠️ Local storage is full — older chats and artifacts were trimmed so the newest ones could be saved.
+            Export important conversations, then clear them in the sessions panel.
+          </span>
+          <button
+            onClick={() => setStorageFull(false)}
+            className="shrink-0 px-2 py-0.5 rounded-md border border-amber-500/30 hover:bg-amber-500/20 font-mono transition-colors cursor-pointer"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+
       {/* Main Content Area: Welcome Screen or Chat Page */}
       <ErrorBoundary fallbackTitle="Application Workspace Render Error">
-        <main className={`flex-1 mt-[58px] ${activeSessionId === 'welcome' ? 'mb-0' : 'mb-[110px]'} relative overflow-hidden flex flex-col`}>
+        <main className={`flex-1 ${isSearchOpen ? 'mt-[96px]' : 'mt-[58px]'} ${activeSessionId === 'welcome' ? 'mb-0' : 'mb-[110px]'} relative overflow-hidden flex flex-col transition-[margin] duration-200`}>
           {activeSessionId === 'welcome' ? (
             <div className="flex-1 flex flex-col overflow-hidden relative">
               <WelcomeView
@@ -1269,31 +1611,14 @@ export default function App() {
                 typingStatus={typingStatus}
                 typingElapsed={typingElapsed}
                 currentModelId={settings.mod}
-                onQuickPrompt={text => handleSend(text)}
-                onPreviewCode={code => {
-                  setPreviewHtml(code);
-                  setIsPreviewOpen(true);
-                }}
+                onQuickPrompt={handleQuickSend}
+                onPreviewCode={handlePreviewCode}
                 onRetry={handleRetry}
                 onEditResend={handleEditResend}
                 onDeleteMessage={handleDeleteMessage}
                 onSpeak={handleSpeak}
-                searchQuery={searchQuery}
+                searchQuery={isSearchOpen ? searchQuery : ''}
                 isPreviewOpen={isPreviewOpen}
-                settings={settings}
-                onUpdateSettings={newS => setSettings(prev => ({ ...prev, ...newS }))}
-                activeProvider={activeProvider}
-                onOpenModelPicker={() => setIsModelPickerOpen(true)}
-                onOpenProviderPicker={() => setIsProviderPickerOpen(true)}
-                onOpenProjectModal={() => setIsProjectModalOpen(true)}
-                onOpenSnippetsModal={() => setIsSnippetsModalOpen(true)}
-                onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-                onTogglePreview={() => setIsPreviewOpen(prev => !prev)}
-                onSend={handleSend}
-                onStop={handleStopGeneration}
-                isBusy={isBusy}
-                totalSessionTokens={totalSessionTokens}
-                projectCount={projectFiles.length}
               />
 
               {/* Live Code Preview Sandbox */}
@@ -1376,8 +1701,9 @@ export default function App() {
         }}
       />
 
-      {/* Full Page Settings Studio */}
+      {/* Full Page Settings Studio (lazy: only needed once the user opens it) */}
       {isSettingsModalOpen && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-[#050505]" />}>
         <SettingsPage
           settings={settings}
           providers={providers}
@@ -1401,6 +1727,7 @@ export default function App() {
             setActiveSessionId('welcome');
           }}
         />
+        </Suspense>
       )}
 
       <ModelPickerModal
@@ -1415,7 +1742,7 @@ export default function App() {
         onUpdateProvider={updatedProv => {
           const nextProviders = providers.map(p => p.id === updatedProv.id ? updatedProv : p);
           setProviders(nextProviders);
-          localStorage.setItem('gbai_providers_v13', JSON.stringify(nextProviders));
+          localStorage.setItem(STORAGE.providers, JSON.stringify(nextProviders));
         }}
         onSwitchProvider={id => handleSelectProvider(id)}
       />
@@ -1450,9 +1777,11 @@ export default function App() {
 
       {/* Interactive Developer Documentation & Hardware Hub */}
       {isDocsOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-[#050505] animate-fadeIn">
-          <DeveloperDocsPage onBack={() => setIsDocsOpen(false)} />
-        </div>
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-[#050505]" />}>
+          <div className="fixed inset-0 z-50 flex flex-col bg-[#050505] animate-fadeIn">
+            <DeveloperDocsPage onBack={() => setIsDocsOpen(false)} />
+          </div>
+        </Suspense>
       )}
     </div>
   );

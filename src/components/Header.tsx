@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Layers,
   Search,
@@ -9,16 +9,22 @@ import {
   FolderOpen,
   Home,
   Files,
-  Sparkles,
   BookOpen
 } from 'lucide-react';
 import { PremiumAvatar, AvatarStatus } from './PremiumAvatar';
 import { BEHAVIOR_CONFIGS, AgentBehaviorState } from '../bot';
+import { APP_VERSION } from '../version';
 
 interface HeaderProps {
   onToggleSessions: () => void;
   onGoWelcome: () => void;
   onToggleSearch: () => void;
+  /** In-conversation transcript search (opened with the Search button or Ctrl/⌘+F). */
+  isSearchOpen?: boolean;
+  searchQuery?: string;
+  onSearchQueryChange?: (q: string) => void;
+  /** No transcript to search yet (welcome screen) — the field is pointless there. */
+  searchDisabled?: boolean;
   onTogglePreview: () => void;
   isPreviewOpen: boolean;
   onToggleArtifacts: () => void;
@@ -37,6 +43,10 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSessions,
   onGoWelcome,
   onToggleSearch,
+  isSearchOpen = false,
+  searchQuery = '',
+  onSearchQueryChange,
+  searchDisabled = false,
   onTogglePreview,
   isPreviewOpen,
   onToggleArtifacts,
@@ -51,6 +61,16 @@ export const Header: React.FC<HeaderProps> = ({
   agentStatus = 'idle'
 }) => {
   const behavior = BEHAVIOR_CONFIGS[agentStatus as AgentBehaviorState] || BEHAVIOR_CONFIGS.idle;
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the field the moment the bar opens, blur it when it closes.
+  useEffect(() => {
+    if (isSearchOpen && !searchDisabled) {
+      const t = setTimeout(() => searchInputRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+    searchInputRef.current?.blur();
+  }, [isSearchOpen, searchDisabled]);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#0c0c0e]/95 backdrop-blur-xl border-b border-[#27272a] pt-[env(safe-area-inset-top,0px)]">
@@ -81,7 +101,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="font-extrabold text-[14px] md:text-[15px] tracking-tight leading-tight text-white flex items-center gap-1.5">
                 <span><span className="text-[var(--accent)]">G</span>BG AI</span>
                 <span className="text-[9px] font-mono font-bold text-[var(--accent)] bg-[var(--accent-light)] px-1.5 py-0.2 rounded-md border border-[var(--accent)]/30">
-                  v14
+                  v{APP_VERSION}
                 </span>
                 {agentStatus !== 'idle' && (
                   <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-sans font-medium bg-[#18181c] border border-[#27272a] text-[#a1a1aa] animate-fadeIn">
@@ -131,9 +151,16 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onToggleSearch}
-            className="w-10 h-10 rounded-2xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-white hover:border-[var(--accent)] flex items-center justify-center transition-all cursor-pointer"
-            title="Search"
+            className={`w-10 h-10 rounded-2xl border flex items-center justify-center transition-all cursor-pointer ${
+              isSearchOpen
+                ? 'bg-[var(--accent-light)] border-[var(--accent)] text-[var(--accent)]'
+                : 'bg-[#18181b] border-[#27272a] text-[#a1a1aa] hover:text-white hover:border-[var(--accent)]'
+            }`}
+            title={searchDisabled ? 'Open a conversation to search it' : 'Search in this conversation (Ctrl/⌘+F)'}
             aria-label="Search"
+            aria-expanded={isSearchOpen}
+            disabled={searchDisabled}
+            style={searchDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
           >
             <Search size={17} />
           </button>
@@ -199,6 +226,43 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* In-conversation search bar */}
+      {isSearchOpen && (
+        <div className="px-3 md:px-5 pb-2 animate-fadeIn">
+          <div className="flex items-center gap-2 bg-[#121215] border border-[#27272a] rounded-xl px-3 py-1.5 focus-within:border-[var(--accent)] transition-colors">
+            <Search size={14} className="text-[#71717a] shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={e => onSearchQueryChange?.(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') onToggleSearch();
+              }}
+              placeholder="Search this conversation…"
+              dir="auto"
+              className="flex-1 bg-transparent outline-none text-xs text-white placeholder-[#52525b] select-text"
+              aria-label="Search query"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => onSearchQueryChange?.('')}
+                className="text-[10px] font-mono text-[#71717a] hover:text-white px-1.5 py-0.5 rounded-md hover:bg-[#1f1f23] transition-colors cursor-pointer"
+                title="Clear query"
+              >
+                clear
+              </button>
+            )}
+            <button
+              onClick={onToggleSearch}
+              className="text-[10px] font-mono text-[#71717a] hover:text-white px-1.5 py-0.5 rounded-md hover:bg-[#1f1f23] transition-colors cursor-pointer"
+              title="Close (Esc)"
+            >
+              esc
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

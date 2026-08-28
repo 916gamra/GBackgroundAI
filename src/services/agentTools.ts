@@ -1,5 +1,30 @@
-import Chart from 'chart.js/auto';
-import { getProjectFileContent, setProjectFileContent, listProjectFilesMemory, getProjectMemory } from './projectMemory';
+import { getProjectFileContent, setProjectFileContent, listProjectFilesMemory } from './projectMemory';
+import { isToolEnabled, toolHasKey } from './toolPolicy';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Network helper: every agent tool call runs inside a bounded ReAct loop, so a
+// single hanging request used to freeze the whole turn (no timeout was set and
+// the user's Stop button had nothing to abort). All tool fetches go through
+// fetchT() now: hard 20s ceiling, caller abort signals are propagated.
+// ─────────────────────────────────────────────────────────────────────────────
+const NET_TIMEOUT_MS = 20000;
+
+async function fetchT(url: string, opts: RequestInit = {}, timeoutMs: number = NET_TIMEOUT_MS): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const outer = opts.signal as AbortSignal | undefined;
+  const relay = () => ctrl.abort();
+  if (outer) {
+    if (outer.aborted) ctrl.abort();
+    else outer.addEventListener('abort', relay, { once: true });
+  }
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+    if (outer) outer.removeEventListener('abort', relay);
+  }
+}
 
 export const AGENT_TOOLS = [
   {
@@ -987,14 +1012,17 @@ export const AGENT_TOOLS = [
  */
 export function getActiveAgentTools(
   enabledMap?: Record<string, boolean>,
-  customTools?: Array<{ id: string; name: string; description: string; parametersJson: string; enabled: boolean }>
+  customTools?: Array<{ id: string; name: string; description: string; parametersJson: string; enabled: boolean }>,
+  settings?: Record<string, any> | null
 ): any[] {
-  // Builtin tools: if not explicitly set to false, they are enabled by default
+  // Builtin tools: real tools default to ON, simulated/demo tools default to OFF
+  // (see services/toolPolicy.ts). Anything the user toggled in
+  // Settings → AI Tools always wins.
   const activeBuiltins = AGENT_TOOLS.filter(t => {
     const toolName = t.function.name;
-    if (enabledMap && enabledMap[toolName] === false) {
-      return false;
-    }
+    if (!isToolEnabled(toolName, enabledMap)) return false;
+    // Do not advertise tools that cannot work because a required key is missing.
+    if (!toolHasKey(toolName, settings)) return false;
     return true;
   });
 
@@ -1873,7 +1901,7 @@ export async function fetchURL(url: string): Promise<string> {
     return '❌ URL must start with http:// or https://';
   }
   try {
-    const res = await fetch('https://r.jina.ai/' + url, {
+    const res = await fetchT('https://r.jina.ai/' + url, {
       headers: { 'Accept': 'text/plain' }
     });
     if (!res.ok) return `[HTTP ${res.status}: Failed to read URL]`;
@@ -1887,7 +1915,7 @@ export async function fetchURL(url: string): Promise<string> {
 export async function wikiSearch(query: string, lang = 'en'): Promise<string> {
   try {
     const url = `https://${encodeURIComponent(lang)}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*&srlimit=5`;
-    const res = await fetch(url);
+    const res = await fetchT(url);
     if (!res.ok) return `[Wikipedia error: HTTP ${res.status}]`;
     const data = await res.json();
     const hits = data.query?.search || [];
@@ -1906,6 +1934,9 @@ export async function makeChart(args: any, onChartGenerated?: (chartDataUrl: str
   canvas.height = 320;
   const ctx = canvas.getContext('2d');
   if (!ctx) return '❌ Failed to obtain 2D canvas context';
+
+  // Loaded on demand: chart.js is ~200 KB and only needed when the agent draws one.
+  const { default: Chart } = await import('chart.js/auto');
 
   ctx.fillStyle = '#121214';
   ctx.fillRect(0, 0, 560, 320);
@@ -2028,7 +2059,7 @@ export function execJS(code: string): Promise<string> {
 export async function webSearch(query: string, serperKey?: string): Promise<string> {
   if (serperKey && serperKey.trim()) {
     try {
-      const res = await fetch('https://google.serper.dev/search', {
+      const res = await fetchT('https://google.serper.dev/search', {
         method: 'POST',
         headers: {
           'X-API-KEY': serperKey.trim(),
@@ -2150,7 +2181,7 @@ export async function zapierAction(action: string, params?: any, webhookUrl?: st
     return `⚠️ Zapier Action is not configured. Please enter a valid Zapier Webhook URL in Settings. (Action: "${action}")`;
   }
   try {
-    const res = await fetch(webhookUrl, {
+    const res = await fetchT(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, params, timestamp: new Date().toISOString() })
@@ -2169,7 +2200,7 @@ export async function makeWebhook(scenario: string, payload?: any, webhookUrl?: 
     return `⚠️ Make.com Webhook is not configured. Please enter a valid Webhook URL in Settings. (Scenario: "${scenario}")`;
   }
   try {
-    const res = await fetch(webhookUrl, {
+    const res = await fetchT(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenario, payload, timestamp: new Date().toISOString() })
@@ -2190,7 +2221,7 @@ export async function vectorRagSearch(query: string, topK: number = 3, apiKey?: 
   try {
     // Direct Pinecone query endpoint
     const endpoint = `https://index-name-${env}.svc.pinecone.io/query`;
-    const res = await fetch(endpoint, {
+    const res = await fetchT(endpoint, {
       method: 'POST',
       headers: {
         'Api-Key': apiKey,
@@ -2218,7 +2249,7 @@ export async function elevenLabsTTS(text: string, voice: string = 'Rachel', apiK
   if (apiKey && apiKey.trim()) {
     try {
       const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Default Rachel voice ID
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const res = await fetchT(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
         headers: {
           'xi-api-key': apiKey.trim(),
@@ -2434,7 +2465,7 @@ export async function triggerN8nAutomation(webhookUrl: string, payload: any): Pr
     return '❌ Error: Invalid n8n Webhook URL. Ensure it starts with http:// or https://';
   }
   try {
-    const res = await fetch(webhookUrl, {
+    const res = await fetchT(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -2962,16 +2993,16 @@ export async function fetchGitHubTree(
   // 1. Get branch commit sha
   let branchSha = '';
   try {
-    const branchRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches/${branch}`, { headers });
+    const branchRes = await fetchT(`https://api.github.com/repos/${owner}/${repo}/branches/${branch}`, { headers });
     if (branchRes.ok) {
       const bData = await branchRes.json();
       branchSha = bData.commit?.sha;
     } else {
-      const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+      const repoRes = await fetchT(`https://api.github.com/repos/${owner}/${repo}`, { headers });
       if (repoRes.ok) {
         const rData = await repoRes.json();
         const defaultBranch = rData.default_branch || 'main';
-        const fallbackBranchRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches/${defaultBranch}`, { headers });
+        const fallbackBranchRes = await fetchT(`https://api.github.com/repos/${owner}/${repo}/branches/${defaultBranch}`, { headers });
         if (fallbackBranchRes.ok) {
           const fbData = await fallbackBranchRes.json();
           branchSha = fbData.commit?.sha;
@@ -2987,7 +3018,7 @@ export async function fetchGitHubTree(
   }
 
   // 2. Fetch full tree recursively
-  const treeRes = await fetch(
+  const treeRes = await fetchT(
     `https://api.github.com/repos/${owner}/${repo}/git/trees/${branchSha}?recursive=1`,
     { headers }
   );
@@ -3020,7 +3051,7 @@ export async function fetchGitHubTree(
   // 4. Fetch key files in parallel
   const fetchFile = async (path: string) => {
     try {
-      const r = await fetch(
+      const r = await fetchT(
         `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`,
         { headers }
       );
@@ -3114,7 +3145,7 @@ export async function readGitHubFile(
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const cleanPath = encodeURIComponent(filePath).replace(/%2F/g, '/');
-  const res = await fetch(
+  const res = await fetchT(
     `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${branch}`,
     { headers }
   );
@@ -3192,7 +3223,7 @@ export async function searchGitHubCode(
   }
 
   const perPage = Math.min(args.limit || 20, 30);
-  const res = await fetch(
+  const res = await fetchT(
     `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=${perPage}`,
     { headers }
   );
@@ -3252,12 +3283,12 @@ export async function publishToGitHub(
 
   // 1. Ensure branch exists
   try {
-    const branchCheck = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches/${branch}`, { headers });
+    const branchCheck = await fetchT(`https://api.github.com/repos/${owner}/${repo}/branches/${branch}`, { headers });
     if (!branchCheck.ok && branch !== 'main') {
-      const mainRef = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/main`, { headers });
+      const mainRef = await fetchT(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/main`, { headers });
       if (mainRef.ok) {
         const mainData = await mainRef.json();
-        await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
+        await fetchT(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: mainData.object.sha })
@@ -3270,7 +3301,7 @@ export async function publishToGitHub(
   let existingSha: string | undefined;
   try {
     const cleanPath = encodeURIComponent(filePath).replace(/%2F/g, '/');
-    const getRes = await fetch(
+    const getRes = await fetchT(
       `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${branch}`,
       { headers }
     );
@@ -3290,7 +3321,7 @@ export async function publishToGitHub(
 
   // 4. PUT file to GitHub Contents API
   const cleanPath = encodeURIComponent(filePath).replace(/%2F/g, '/');
-  const putRes = await fetch(
+  const putRes = await fetchT(
     `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}`,
     {
       method: 'PUT',
@@ -3629,7 +3660,7 @@ export function executeMultiRepoOrchestrator(args: { repos: string[]; action: st
   }, null, 2);
 }
 
-export function executeLiveCodeSandbox(args: { code: string }) {
+export function executeLiveCodeSandbox(_args: { code: string }) {
   return JSON.stringify({
     sandbox_status: 'RENDERED',
     runtime: 'React 18 / DOM Sandbox',
@@ -3640,7 +3671,7 @@ export function executeLiveCodeSandbox(args: { code: string }) {
 
 export function executeModbusTitan(args: { mode: string; host: string; port?: number; function_code?: number; address: number; count?: number }) {
   const count = args.count || 1;
-  const registers = Array.from({ length: count }, (_, i) => Math.floor(Math.random() * 65535));
+  const registers = Array.from({ length: count }, () => Math.floor(Math.random() * 65535));
   return JSON.stringify({
     mode: args.mode,
     host: `${args.host}:${args.port || 502}`,

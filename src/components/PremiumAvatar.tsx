@@ -13,7 +13,6 @@ import {
   BotAnimationTrack,
   BotKeyframe,
   sampleTrack,
-  TAU
 } from '../bot';
 
 export type AvatarStatus = 'idle' | 'waiting' | 'listening' | 'thinking' | 'analyzing' | 'speaking' | 'success' | 'error';
@@ -40,7 +39,6 @@ export const PremiumAvatar: React.FC<PremiumAvatarProps> = ({
   animState: forcedAnimStateId,
   animationTrack,
   className = 'w-8 h-8',
-  accentColor = 'var(--accent)',
   isAnimated = true,
   interactive = false,
   showStatusBadge = false,

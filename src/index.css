@@ -470,3 +470,22 @@ button:active:not(:disabled) {
   transform: scale(0.95);
 }
 
+
+
+/* ─────────────────────────────────────────────────────────────
+   Text must stay selectable.
+   The root <body> used to carry a global `select-none` (an Android
+   "app-feel" tweak) which cascaded into the chat transcript, so users
+   could not highlight a reply, long-press-copy a code snippet or select
+   text on a phone at all. Buttons keep their own select:none above.
+   ───────────────────────────────────────────────────────────── */
+.markdown-body,
+.markdown-body * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+pre,
+code {
+  -webkit-user-select: text;
+  user-select: text;
+}

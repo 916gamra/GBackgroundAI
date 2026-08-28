@@ -1,26 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import {
-  Plus,
-  ArrowUp,
-  Square,
-  Mic,
-  Paperclip,
-  Image as ImageIcon,
-  Cpu,
-  Globe,
-  FolderOpen,
-  Bookmark,
-  Volume2,
-  MonitorPlay,
-  Settings2,
-  ChevronDown,
-  Server,
-  X,
-  Terminal,
-  Sparkles
-} from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUp, Bookmark, ChevronDown, Cpu, FolderOpen, Globe, ImageIcon, Mic, MonitorPlay, Paperclip, Plus, Server, Settings2, Sparkles, Square, Terminal, Volume2, X } from 'lucide-react';
 import { AppSettings, Provider } from '../types';
-import { MODELS, countTokens } from '../services/aiService';
+import { MODELS } from '../services/aiService';
 
 interface InputAreaProps {
   settings: AppSettings;

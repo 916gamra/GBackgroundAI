@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Search, X, Check, Code, Brain, Zap, Sparkles, Eye, Server, RefreshCw, Layers, CheckCircle2, AlertCircle, Star, Activity } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Brain, Check, CheckCircle2, Code, Eye, Layers, RefreshCw, Search, Server, Sparkles, Star, X, Zap } from 'lucide-react';
 import { MODELS, sanitizeApiKey } from '../../services/aiService';
 import { ModelConfig, Provider } from '../../types';
 import { getAdapterForProvider } from '../../services/providers';
@@ -41,9 +41,29 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
     }
   }, [isOpen, activeProvider?.id, activeProvider?.apiKey]);
 
-  // Check if provider was configured in Auto Mode
+  // "auto" model mode: the provider does not pin a model, so the picker used to
+  // show an empty list. In auto mode we now offer every known model instead.
   const isProviderAutoMode = activeProvider?.model === 'auto';
   const configuredModel = activeProvider?.model;
+
+  /**
+   * Choose a model, and if that model is hosted by a different provider, switch
+   * the provider too. Before this, the picker emitted `onSelectModel(id)` only,
+   * so e.g. choosing "Claude 3.5 Sonnet" while Groq was active produced a
+   * provider that has never heard of that model id.
+   */
+  const selectModel = (id: string, cfg?: ModelConfig) => {
+    const wantedPv = (cfg?.pv || '').toLowerCase();
+    const activePv = (activeProvider?.pvType || activeProvider?.id || '').toLowerCase();
+    const needsSwitch =
+      !!wantedPv && !!activeProvider && wantedPv !== activePv && wantedPv !== activeProvider.id?.toLowerCase();
+    if (needsSwitch) {
+      const target = (providers || []).find(p => (p.pvType || p.id || '').toLowerCase() === wantedPv || p.id.toLowerCase() === wantedPv);
+      if (target) onSwitchProvider?.(target.id);
+    }
+    onSelectModel(id);
+    onClose();
+  };
 
   // Build the models map
   const allModels: Record<string, ModelConfig> = useMemo(() => {
@@ -244,7 +264,8 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
   // Determine which models to display
   const modelsToDisplay = Object.entries(allModels).filter(([id, m]) => {
     // Check if model belongs to active provider or search
-    const isForActive = isModelForActiveProvider(m, id) ||
+    const isForActive = isProviderAutoMode ||
+      isModelForActiveProvider(m, id) ||
       (activeProvider?.availableModels && activeProvider.availableModels.includes(id)) ||
       (configuredModel && (id === configuredModel || id.toLowerCase() === configuredModel.toLowerCase()));
 
@@ -362,10 +383,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
                   return (
                     <div
                       key={`starred-${id}`}
-                      onClick={() => {
-                        onSelectModel(id);
-                        onClose();
-                      }}
+                      onClick={() => selectModel(id, m)}
                       className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                         isSelected
                           ? 'bg-[#1e1d2b] border-amber-400/80 text-white'
@@ -457,10 +475,7 @@ export const ModelPickerModal: React.FC<ModelPickerModalProps> = ({
                 return (
                   <div
                     key={id}
-                    onClick={() => {
-                      onSelectModel(id);
-                      onClose();
-                    }}
+                    onClick={() => selectModel(id, m)}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
                       isSelected
                         ? 'bg-[#181824] border-[var(--accent)] shadow-md shadow-[var(--accent-light)]'
